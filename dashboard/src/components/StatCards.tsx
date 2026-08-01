@@ -7,39 +7,15 @@ interface StatDef {
   status: ProcessStatus;
   label: string;
   dot: string;
-  /** Number color when count > 0 — semantic focus cue. */
-  activeText: string;
-  /** Pulse the dot when the count is non-zero (needs attention). */
-  alert?: boolean;
 }
 
+/* Color lives in the status dot only — counts stay neutral so the cards
+   read as data, not as four competing alerts. */
 const STATS: StatDef[] = [
-  {
-    status: "running",
-    label: "Running",
-    dot: "bg-kumo-success",
-    activeText: "text-kumo-success",
-  },
-  {
-    status: "backoff",
-    label: "Backoff",
-    dot: "bg-kumo-warning",
-    activeText: "text-kumo-warning",
-    alert: true,
-  },
-  {
-    status: "crashed",
-    label: "Crashed",
-    dot: "bg-kumo-danger",
-    activeText: "text-kumo-danger",
-    alert: true,
-  },
-  {
-    status: "stopped",
-    label: "Stopped",
-    dot: "bg-kumo-fill",
-    activeText: "text-kumo-default",
-  },
+  { status: "running", label: "Running", dot: "bg-kumo-success" },
+  { status: "backoff", label: "Backoff", dot: "bg-kumo-warning" },
+  { status: "crashed", label: "Crashed", dot: "bg-kumo-danger" },
+  { status: "stopped", label: "Stopped", dot: "bg-kumo-fill" },
 ];
 
 /* Static class literals so Tailwind generates them. */
@@ -60,7 +36,7 @@ export function StatCards({
   onSelect: (status: ProcessStatus) => void;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
       {STATS.map((s, i) => {
         const count = counts[s.status];
         const selected = active === s.status;
@@ -73,24 +49,21 @@ export function StatCards({
             className={`rr-rise rounded-xl text-left focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-none ${STAGGER[i]}`}
           >
             <LayerCard
-              className={`h-full px-5 py-4 hover:bg-kumo-tint ${
+              className={`h-full px-3 py-2.5 hover:bg-kumo-tint sm:px-5 sm:py-4 ${
                 selected ? "ring-2 ring-kumo-brand" : ""
               }`}
             >
-              <div className="grid gap-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${s.dot} ${
-                      s.alert && count > 0 ? "rr-pulse" : ""
-                    }`}
-                  />
-                  <Text size="sm" variant="secondary">
+              {/* Mobile: one quiet line per chip. Desktop: label over count. */}
+              <div className="flex items-center gap-2 sm:grid sm:gap-1">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} />
+                  <Text size="sm" variant="secondary" truncate>
                     {s.label}
                   </Text>
                 </div>
                 <span
-                  className={`text-2xl font-semibold tabular-nums ${
-                    count > 0 ? s.activeText : "text-kumo-subtle"
+                  className={`ml-auto text-sm font-semibold tabular-nums sm:ml-0 sm:text-2xl ${
+                    count > 0 ? "text-kumo-default" : "text-kumo-subtle"
                   }`}
                 >
                   {count}
