@@ -1,4 +1,5 @@
 pub mod core;
+pub mod http;
 pub mod logs;
 pub mod rpc;
 pub mod state;
@@ -32,6 +33,11 @@ async fn async_main() -> std::io::Result<()> {
 
     tokio::select! {
         _ = rpc::serve(core.clone(), listener) => {}
+        res = http::serve(core.clone()) => {
+            if let Err(e) = res {
+                eprintln!("rr: http server failed: {e}");
+            }
+        }
         _ = shutdown_signal() => {
             println!("rr: daemon shutting down");
         }
