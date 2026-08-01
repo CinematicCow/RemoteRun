@@ -50,17 +50,6 @@ function displayUptime(p: ProcessInfo, fetchedAt: number, now: number): string {
   return formatUptime(p.uptime_secs + extra);
 }
 
-/** Left edge stripe token for unhealthy processes. */
-function stripe(p: ProcessInfo): string {
-  if (p.status === "crashed") {
-    return "shadow-[inset_2px_0_0_var(--color-kumo-danger)]";
-  }
-  if (p.status === "backoff") {
-    return "shadow-[inset_2px_0_0_var(--color-kumo-warning)]";
-  }
-  return "";
-}
-
 function Meta({
   label,
   value,
@@ -190,7 +179,8 @@ function ProcessDetails({
   );
 }
 
-/** Compact secondary line for mobile cards, with semantic tones. */
+/** Compact secondary line for mobile cards. Deliberately monochrome —
+ *  status color lives in the badge and the edge stripe, nowhere else. */
 function CardMeta({
   p,
   fetchedAt,
@@ -200,42 +190,22 @@ function CardMeta({
   fetchedAt: number;
   now: number;
 }) {
-  const crashFresh =
-    p.last_crash_at != null && now / 1000 - p.last_crash_at < 300;
-  const parts: { text: string; tone: string }[] = [];
+  const parts: string[] = [];
   if (p.uptime_secs != null) {
-    parts.push({
-      text: `up ${displayUptime(p, fetchedAt, now)}`,
-      tone: "text-kumo-subtle",
-    });
+    parts.push(`up ${displayUptime(p, fetchedAt, now)}`);
   }
   if (p.restarts > 0) {
-    parts.push({
-      text: `${p.restarts} restarts`,
-      tone: "text-kumo-warning",
-    });
+    parts.push(`${p.restarts} ${p.restarts === 1 ? "restart" : "restarts"}`);
   }
   if (p.last_crash_at != null) {
-    parts.push({
-      text: `crashed ${formatAgo(p.last_crash_at)}`,
-      tone: crashFresh ? "text-kumo-danger" : "text-kumo-subtle",
-    });
+    parts.push(`crashed ${formatAgo(p.last_crash_at)}`);
   }
   if (parts.length === 0) {
-    return (
-      <span className="text-xs text-kumo-subtle">
-        created {formatAgo(p.created_at)}
-      </span>
-    );
+    parts.push(`created ${formatAgo(p.created_at)}`);
   }
   return (
-    <span className="text-xs tabular-nums">
-      {parts.map((part, i) => (
-        <span key={i}>
-          {i > 0 && <span className="text-kumo-subtle"> · </span>}
-          <span className={part.tone}>{part.text}</span>
-        </span>
-      ))}
+    <span className="truncate text-xs tabular-nums text-kumo-subtle">
+      {parts.join(" · ")}
     </span>
   );
 }
@@ -264,30 +234,37 @@ export function ProcessTable({
           return (
             <div
               key={p.name}
-              className={`rounded-xl bg-kumo-base ring ring-kumo-line ${stripe(p)}`}
+              className="rounded-xl bg-kumo-base ring ring-kumo-line"
             >
-              <button
-                type="button"
-                onClick={() => toggle(p.name)}
-                aria-expanded={open}
-                className="flex w-full items-center justify-between gap-2 px-3 pt-2.5 pb-1 text-left"
-              >
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <Caret open={open} />
-                  <span className="truncate text-sm font-medium text-kumo-default">
-                    {p.name}
-                  </span>
-                </span>
-                <Badge variant={statusBadge[p.status]} appearance="dot">
-                  {p.status}
-                </Badge>
-              </button>
-              <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
-                <CardMeta p={p} fetchedAt={fetchedAt} now={now} />
-                <ActionsMenu p={p} size="base" {...actions} />
+              <div className="flex items-stretch">
+                <button
+                  type="button"
+                  onClick={() => toggle(p.name)}
+                  aria-expanded={open}
+                  className="min-w-0 flex-1 py-3 pl-3.5 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Caret open={open} />
+                      <span className="truncate text-sm font-medium text-kumo-default">
+                        {p.name}
+                      </span>
+                    </span>
+                    <Badge variant={statusBadge[p.status]} appearance="dot">
+                      {p.status}
+                    </Badge>
+                  </div>
+                  {/* Indented to align under the name, past the caret. */}
+                  <div className="mt-1 flex pl-[18px]">
+                    <CardMeta p={p} fetchedAt={fetchedAt} now={now} />
+                  </div>
+                </button>
+                <div className="flex items-center px-1.5">
+                  <ActionsMenu p={p} size="base" {...actions} />
+                </div>
               </div>
               {open && (
-                <div className="border-t border-kumo-hairline px-3 py-3">
+                <div className="border-t border-kumo-hairline px-3.5 py-3">
                   <ProcessDetails
                     p={p}
                     fetchedAt={fetchedAt}
@@ -317,8 +294,6 @@ export function ProcessTable({
           <Table.Body>
             {processes.map((p) => {
               const open = expanded === p.name;
-              const crashFresh =
-                p.last_crash_at != null && now / 1000 - p.last_crash_at < 300;
               return (
                 <Fragment key={p.name}>
                   <Table.Row
@@ -326,7 +301,7 @@ export function ProcessTable({
                     aria-expanded={open}
                     className="cursor-pointer hover:bg-kumo-tint"
                   >
-                    <Table.Cell className={stripe(p) || undefined}>
+                    <Table.Cell>
                       <div className="flex min-w-0 items-center gap-1.5">
                         <Caret open={open} />
                         <span className="truncate text-sm font-medium text-kumo-default">
@@ -354,19 +329,15 @@ export function ProcessTable({
                       <span
                         className={`text-sm tabular-nums ${
                           p.restarts > 0
-                            ? "text-kumo-warning"
-                            : "text-kumo-default"
+                            ? "text-kumo-default"
+                            : "text-kumo-subtle"
                         }`}
                       >
                         {p.restarts}
                       </span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span
-                        className={`text-sm ${
-                          crashFresh ? "text-kumo-danger" : "text-kumo-subtle"
-                        }`}
-                      >
+                      <span className="text-sm text-kumo-subtle">
                         {p.last_crash_at != null
                           ? formatAgo(p.last_crash_at)
                           : "—"}
@@ -383,10 +354,7 @@ export function ProcessTable({
                   </Table.Row>
                   {open && (
                     <Table.Row>
-                      <Table.Cell
-                        colSpan={6}
-                        className={`bg-kumo-recessed ${stripe(p)}`}
-                      >
+                      <Table.Cell colSpan={6} className="bg-kumo-recessed">
                         <div className="px-1 py-1">
                           <ProcessDetails
                             p={p}
