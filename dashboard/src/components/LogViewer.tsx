@@ -5,6 +5,7 @@ import {
   Button,
   Dialog,
   InputGroup,
+  Tabs,
   Tooltip,
 } from "@cloudflare/kumo";
 import {
@@ -35,39 +36,13 @@ function logLevel(line: string): LogLevel | null {
   return "debug"; // DEBUG, TRACE
 }
 
-const LEVELS: {
-  key: LogLevel;
-  label: string;
-  /** Active chip colors. */
-  chip: string;
-  /** Line text color. */
-  text: string;
-}[] = [
-  {
-    key: "debug",
-    label: "Debug",
-    chip: "bg-kumo-fill text-kumo-default",
-    text: "text-kumo-subtle",
-  },
-  {
-    key: "info",
-    label: "Info",
-    chip: "bg-kumo-info-tint text-kumo-info",
-    text: "text-kumo-default",
-  },
-  {
-    key: "warn",
-    label: "Warn",
-    chip: "bg-kumo-warning-tint text-kumo-warning",
-    text: "text-kumo-warning",
-  },
-  {
-    key: "error",
-    label: "Error",
-    chip: "bg-kumo-danger-tint text-kumo-danger",
-    text: "text-kumo-danger",
-  },
-];
+/** Line text color per level. */
+const LEVEL_TEXT: Record<LogLevel, string> = {
+  debug: "text-kumo-subtle",
+  info: "text-kumo-default",
+  warn: "text-kumo-warning",
+  error: "text-kumo-danger",
+};
 
 const timeFmt = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -86,12 +61,7 @@ export function LogViewer({ name }: { name: string }) {
   const [live, setLive] = useState(false);
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState("");
-  const [levels, setLevels] = useState<Record<LogLevel, boolean>>({
-    debug: true,
-    info: true,
-    warn: true,
-    error: true,
-  });
+  const [level, setLevel] = useState<"all" | LogLevel>("all");
   const [pinned, setPinned] = useState(true);
   const [unseen, setUnseen] = useState(0);
 
@@ -141,18 +111,15 @@ export function LogViewer({ name }: { name: string }) {
     };
   }, [name]);
 
-  const allLevelsOn = Object.values(levels).every(Boolean);
-
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return lines.filter((l) => {
       if (q && !l.line.toLowerCase().includes(q)) return false;
-      if (allLevelsOn) return true;
+      if (level === "all") return true;
       /* When filtering by level, unclassified lines drop out. */
-      const lvl = logLevel(l.line);
-      return lvl != null && levels[lvl];
+      return logLevel(l.line) === level;
     });
-  }, [lines, filter, levels, allLevelsOn]);
+  }, [lines, filter, level]);
 
 
 
@@ -218,25 +185,20 @@ export function LogViewer({ name }: { name: string }) {
       </div>
 
       <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="flex items-center gap-1" role="group" aria-label="Filter by level">
-          {LEVELS.map((lvl) => {
-            const on = levels[lvl.key];
-            return (
-              <button
-                key={lvl.key}
-                type="button"
-                aria-pressed={on}
-                onClick={() => setLevels((s) => ({ ...s, [lvl.key]: !s[lvl.key] }))}
-                className={`rounded-full px-2 py-0.5 text-xs font-medium focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-none ${
-                  on
-                    ? lvl.chip
-                    : "text-kumo-subtle ring-1 ring-kumo-hairline hover:bg-kumo-tint"
-                }`}
-              >
-                {lvl.label}
-              </button>
-            );
-          })}
+        <div className="max-w-full overflow-x-auto">
+          <Tabs
+            variant="segmented"
+            size="sm"
+            tabs={[
+              { value: "all", label: "All" },
+              { value: "debug", label: "Debug" },
+              { value: "info", label: "Info" },
+              { value: "warn", label: "Warn" },
+              { value: "error", label: "Error" },
+            ]}
+            value={level}
+            onValueChange={(v) => setLevel(v as "all" | LogLevel)}
+          />
         </div>
         <InputGroup className="relative z-0 sm:min-w-40 sm:flex-1">
           <InputGroup.Addon>
@@ -258,7 +220,7 @@ export function LogViewer({ name }: { name: string }) {
             content={paused ? "Resume stream" : "Pause stream"}
             render={
               <Button
-                variant="secondary"
+                variant="ghost"
                 shape="square"
                 icon={paused ? <PlayIcon size={16} /> : <PauseIcon size={16} />}
                 aria-label={paused ? "Resume stream" : "Pause stream"}
@@ -270,7 +232,7 @@ export function LogViewer({ name }: { name: string }) {
             content="Clear output"
             render={
               <Button
-                variant="secondary"
+                variant="ghost"
                 shape="square"
                 icon={<BroomIcon size={16} />}
                 aria-label="Clear output"
@@ -312,7 +274,7 @@ export function LogViewer({ name }: { name: string }) {
             itemContent={(_i, l) => {
               const lvl = logLevel(l.line);
               const tone = lvl
-                ? LEVELS.find((x) => x.key === lvl)!.text
+                ? LEVEL_TEXT[lvl]
                 : l.stream === "stderr"
                   ? "text-kumo-danger"
                   : "text-kumo-default";

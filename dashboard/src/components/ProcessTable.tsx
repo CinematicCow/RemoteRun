@@ -1,6 +1,11 @@
 import { Fragment, useState } from "react";
-import { Badge, Button, DropdownMenu, Table } from "@cloudflare/kumo";
-import { CopyButton } from "./CopyButton";
+import {
+  Badge,
+  Button,
+  ClipboardText,
+  DropdownMenu,
+  Table,
+} from "@cloudflare/kumo";
 import {
   ArrowClockwiseIcon,
   CaretRightIcon,
@@ -79,11 +84,12 @@ function Meta({
 
 function ActionsMenu({
   p,
+  size = "sm",
   onLogs,
   onRestart,
   onStop,
   onRemove,
-}: ProcessActions & { p: ProcessInfo }) {
+}: ProcessActions & { p: ProcessInfo; size?: "sm" | "base" }) {
   const alive = p.status === "running" || p.status === "backoff";
   return (
     <DropdownMenu>
@@ -92,7 +98,7 @@ function ActionsMenu({
           <Button
             variant="ghost"
             shape="square"
-            size="sm"
+            size={size}
             icon={<DotsThreeVerticalIcon size={16} />}
             aria-label={`Actions for ${p.name}`}
           />
@@ -158,12 +164,7 @@ function ProcessDetails({
     <div className="grid min-w-0 gap-4">
       <div className="grid min-w-0 gap-1.5">
         <span className="text-xs text-kumo-subtle">Command</span>
-        <div className="flex items-start gap-1 rounded-lg bg-kumo-base py-1.5 pr-1 pl-3 ring ring-kumo-hairline">
-          <code className="min-w-0 flex-1 font-mono text-xs leading-relaxed break-all text-kumo-default">
-            {p.command}
-          </code>
-          <CopyButton getText={() => p.command} label="Copy command" size="xs" />
-        </div>
+        <ClipboardText text={p.command} className="font-mono text-sm" />
       </div>
       <div className="flex flex-wrap gap-x-10 gap-y-3">
         <Meta label="Pid" value={p.pid != null ? String(p.pid) : "—"} />
@@ -269,7 +270,7 @@ export function ProcessTable({
                 type="button"
                 onClick={() => toggle(p.name)}
                 aria-expanded={open}
-                className="flex w-full items-center justify-between gap-2 px-3 pt-2.5 pb-1.5 text-left"
+                className="flex w-full items-center justify-between gap-2 px-3 pt-2.5 pb-1 text-left"
               >
                 <span className="flex min-w-0 items-center gap-1.5">
                   <Caret open={open} />
@@ -281,9 +282,9 @@ export function ProcessTable({
                   {p.status}
                 </Badge>
               </button>
-              <div className="flex items-center justify-between gap-2 px-3 pb-2">
+              <div className="flex items-center justify-between gap-2 px-3 pb-2.5">
                 <CardMeta p={p} fetchedAt={fetchedAt} now={now} />
-                <ActionsMenu p={p} {...actions} />
+                <ActionsMenu p={p} size="base" {...actions} />
               </div>
               {open && (
                 <div className="border-t border-kumo-hairline px-3 py-3">
