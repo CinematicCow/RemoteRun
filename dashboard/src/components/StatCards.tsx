@@ -49,7 +49,7 @@ export function StatCards({
             className={`rr-rise rounded-xl text-left focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-none ${STAGGER[i]}`}
           >
             <LayerCard
-              className={`h-full px-3 py-2.5 hover:bg-kumo-tint sm:px-5 sm:py-4 ${
+              className={`h-full px-4 py-3.5 hover:bg-kumo-tint sm:px-5 sm:py-4 ${
                 selected ? "ring-2 ring-kumo-brand" : ""
               }`}
             >
@@ -62,7 +62,7 @@ export function StatCards({
                   </Text>
                 </div>
                 <span
-                  className={`ml-auto text-sm font-semibold tabular-nums sm:ml-0 sm:text-2xl ${
+                  className={`ml-auto text-base font-semibold tabular-nums sm:ml-0 sm:text-2xl ${
                     count > 0 ? "text-kumo-default" : "text-kumo-subtle"
                   }`}
                 >
