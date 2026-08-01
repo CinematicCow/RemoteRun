@@ -1,3 +1,21 @@
+//! rr — remote run: a tiny process manager for long-running commands.
+//!
+//! A single binary with two roles: the CLI is a thin client speaking
+//! newline-delimited JSON over a unix socket, and a detached daemon
+//! ([`daemon`]) supervises processes, captures logs and serves the web
+//! dashboard.
+
+#![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(unsafe_code)]
+#![deny(
+    unused,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_qualifications,
+    unused_import_braces
+)]
+
 mod cli;
 mod client;
 mod daemon;
