@@ -1,0 +1,99 @@
+body {
+  margin: 0;
+  background: var(--kumo-color-bg, #f7f7f8);
+}
+
+.app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.start-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.start-form .name-input {
+  width: 160px;
+}
+
+.start-form .command-input {
+  flex: 1;
+  min-width: 240px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.muted {
+  color: #6d6d78;
+}
+
+.truncated {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.log-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.log-viewer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.log-lines {
+  background: #101014;
+  color: #d6d6dc;
+  border-radius: 8px;
+  padding: 12px;
+  height: 360px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.log-line-ts {
+  color: #6d6d78;
+  margin-right: 8px;
+}
+
+.log-line.stderr .log-line-text {
+  color: #ff8a8a;
+}
+
+.empty-note {
+  color: #6d6d78;
+  font-size: 13px;
+  padding: 24px;
+  text-align: center;
+}
