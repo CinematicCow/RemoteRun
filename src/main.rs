@@ -1,4 +1,5 @@
 mod cli;
+mod client;
 mod daemon;
 mod paths;
 mod protocol;
@@ -6,23 +7,55 @@ mod util;
 
 use clap::Parser;
 use cli::{Cli, Cmd};
+use protocol::Request;
 
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
-        Some(Cmd::Daemon) => todo!("daemon"),
-        Some(Cmd::Ps) => todo!("ps"),
-        Some(Cmd::Stop { .. }) => todo!("stop"),
-        Some(Cmd::Restart { .. }) => todo!("restart"),
-        Some(Cmd::Rm { .. }) => todo!("rm"),
-        Some(Cmd::Logs { .. }) => todo!("logs"),
-        None => {
-            if cli.run.is_empty() {
-                eprintln!("usage: rr --name <name> \"<command>\"  (see rr --help)");
-                std::process::exit(2);
+    let result = match cli.command {
+        Some(Cmd::Daemon) => {
+            if let Err(e) = daemon::run() {
+                eprintln!("rr: daemon failed: {e}");
+                std::process::exit(1);
             }
-            todo!("start")
+            return;
         }
+        Some(Cmd::Ps) => client::run(Request::Ps),
+        Some(Cmd::Stop { name }) => client::run(Request::Stop { name }),
+        Some(Cmd::Restart { name }) => client::run(Request::Restart { name }),
+        Some(Cmd::Rm { name }) => client::run(Request::Remove { name }),
+        Some(Cmd::Logs {
+            name,
+            lines,
+            no_follow,
+        }) => client::run(Request::Logs {
+            name,
+            lines,
+            follow: !no_follow,
+        }),
+        None => start_command(cli),
+    };
+
+    if let Err(message) = result {
+        eprintln!("rr: {message}");
+        std::process::exit(1);
     }
+}
+
+fn start_command(cli: Cli) -> Result<(), String> {
+    if cli.run.is_empty() {
+        return Err("nothing to run (see `rr --help`)".into());
+    }
+    let Some(name) = cli.name else {
+        return Err("--name is required when starting a process".into());
+    };
+    let cwd = std::env::current_dir()
+        .map_err(|e| format!("cannot determine working directory: {e}"))?
+        .to_string_lossy()
+        .into_owned();
+    client::run(Request::Start {
+        name,
+        command: cli.run.join(" "),
+        cwd,
+    })
 }
