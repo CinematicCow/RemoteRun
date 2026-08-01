@@ -139,13 +139,20 @@ async fn logs_stream(
     Path(name): Path<String>,
 ) -> Sse<impl Stream<Item = Result<Event, std::convert::Infallible>>> {
     let rx = core.logs.subscribe();
-    let stream = BroadcastStream::new(rx).filter_map(move |item| match item {
+    let live = BroadcastStream::new(rx).filter_map(move |item| match item {
         Ok(line) if line.name == name => {
             let data = serde_json::to_string(&line).ok()?;
             Some(Ok(Event::default().data(data)))
         }
         _ => None, // other processes' lines, or lagged receiver
     });
+    // Emit an initial comment so the first bytes flush immediately. Without
+    // it, buffering proxies hold the response until the first log line or
+    // keep-alive tick, and EventSource sits in "connecting" for seconds.
+    let stream = tokio_stream::iter([Ok::<Event, std::convert::Infallible>(
+        Event::default().comment("connected"),
+    )])
+    .chain(live);
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
