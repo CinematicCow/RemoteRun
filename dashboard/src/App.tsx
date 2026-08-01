@@ -8,7 +8,6 @@ import {
   Empty,
   InputGroup,
   Loader,
-  Tabs,
   Text,
   useKumoToastManager,
 } from "@cloudflare/kumo";
@@ -24,14 +23,12 @@ import type { ProcessInfo, ProcessStatus } from "./types";
 import { useColorMode } from "./useColorMode";
 import { useNow } from "./useNow";
 import { ThemeToggle } from "./components/ThemeToggle";
-import { StatCards } from "./components/StatCards";
+import { StatCards, type StatusFilter } from "./components/StatCards";
 import { ProcessTable } from "./components/ProcessTable";
 import { LogViewer } from "./components/LogViewer";
 import { StartProcessDialog } from "./components/StartProcessDialog";
 
 const POLL_MS = 2000;
-
-type StatusFilter = "all" | ProcessStatus;
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -189,6 +186,7 @@ export default function App() {
               )}
             </span>
             <ThemeToggle isDark={isDark} onToggle={toggle} />
+            <span className="hidden h-4 w-px bg-kumo-line sm:block" />
             <span className="hidden sm:block">
               <Button
                 variant="primary"
@@ -221,24 +219,15 @@ export default function App() {
           />
         )}
 
-        <StatCards counts={counts} />
+        <StatCards
+          counts={counts}
+          active={statusFilter}
+          onSelect={(s) =>
+            setStatusFilter((cur) => (cur === s ? "all" : s))
+          }
+        />
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="max-w-full overflow-x-auto">
-            <Tabs
-              variant="segmented"
-              size="sm"
-              tabs={[
-                { value: "all", label: "All" },
-                { value: "running", label: "Running" },
-                { value: "backoff", label: "Backoff" },
-                { value: "crashed", label: "Crashed" },
-                { value: "stopped", label: "Stopped" },
-              ]}
-              value={statusFilter}
-              onValueChange={(v) => setStatusFilter(v as StatusFilter)}
-            />
-          </div>
           <InputGroup className="relative z-0 w-full sm:ml-auto sm:w-72">
             <InputGroup.Addon>
               <MagnifyingGlassIcon size={16} />
@@ -267,17 +256,17 @@ export default function App() {
           </InputGroup>
         </div>
 
-        <div className="overflow-x-auto rounded-xl bg-kumo-base ring ring-kumo-line">
-          {processes === null ? (
-            <div className="flex items-center justify-center gap-3 px-6 py-20">
-              <Loader className="text-kumo-subtle" />
-              <span className="text-sm text-kumo-subtle">
-                {daemonError
-                  ? "Daemon unreachable — retrying…"
-                  : "Connecting to the daemon…"}
-              </span>
-            </div>
-          ) : list.length === 0 ? (
+        {processes === null ? (
+          <div className="flex items-center justify-center gap-3 rounded-xl bg-kumo-base px-6 py-20 ring ring-kumo-line">
+            <Loader className="text-kumo-subtle" />
+            <span className="text-sm text-kumo-subtle">
+              {daemonError
+                ? "Daemon unreachable — retrying…"
+                : "Connecting to the daemon…"}
+            </span>
+          </div>
+        ) : list.length === 0 ? (
+          <div className="rounded-xl bg-kumo-base ring ring-kumo-line">
             <Empty
               size="sm"
               icon={<TerminalWindowIcon size={28} />}
@@ -294,12 +283,14 @@ export default function App() {
                 </Button>
               }
             />
-          ) : filtered.length === 0 ? (
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-xl bg-kumo-base ring ring-kumo-line">
             <Empty
               size="sm"
               icon={<MagnifyingGlassIcon size={28} />}
               title="No matching processes"
-              description={`Nothing matches the current filters.`}
+              description="Nothing matches the current filters."
               contents={
                 <Button
                   variant="secondary"
@@ -312,25 +303,25 @@ export default function App() {
                 </Button>
               }
             />
-          ) : (
-            <ProcessTable
-              processes={filtered}
-              fetchedAt={fetchedAt}
-              now={now}
-              onLogs={setSelectedLogs}
-              onRestart={(name) =>
-                act(() => api.restart(name), `Couldn't restart ${name}`)
-              }
-              onStop={(name) =>
-                act(() => api.stop(name), `Couldn't stop ${name}`)
-              }
-              onRemove={(p) => {
-                setRemoveError(undefined);
-                setPendingRemove(p);
-              }}
-            />
-          )}
-        </div>
+          </div>
+        ) : (
+          <ProcessTable
+            processes={filtered}
+            fetchedAt={fetchedAt}
+            now={now}
+            onLogs={setSelectedLogs}
+            onRestart={(name) =>
+              act(() => api.restart(name), `Couldn't restart ${name}`)
+            }
+            onStop={(name) =>
+              act(() => api.stop(name), `Couldn't stop ${name}`)
+            }
+            onRemove={(p) => {
+              setRemoveError(undefined);
+              setPendingRemove(p);
+            }}
+          />
+        )}
       </main>
 
       <StartProcessDialog
@@ -339,6 +330,8 @@ export default function App() {
         onStarted={(name) => {
           refresh();
           toastManager.add({ variant: "success", title: `Started ${name}` });
+          /* First-success moment: land the user on live logs. */
+          setSelectedLogs(name);
         }}
       />
 

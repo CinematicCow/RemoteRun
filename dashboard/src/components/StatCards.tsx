@@ -1,6 +1,8 @@
 import { LayerCard, Text } from "@cloudflare/kumo";
 import type { ProcessStatus } from "../types";
 
+export type StatusFilter = "all" | ProcessStatus;
+
 interface StatDef {
   status: ProcessStatus;
   label: string;
@@ -48,36 +50,54 @@ const STAGGER = [
   "[animation-delay:180ms]",
 ];
 
-export function StatCards({ counts }: { counts: Record<ProcessStatus, number> }) {
+export function StatCards({
+  counts,
+  active,
+  onSelect,
+}: {
+  counts: Record<ProcessStatus, number>;
+  active: StatusFilter;
+  onSelect: (status: ProcessStatus) => void;
+}) {
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {STATS.map((s, i) => {
         const count = counts[s.status];
+        const selected = active === s.status;
         return (
-          <LayerCard
+          <button
             key={s.status}
-            className={`rr-rise px-5 py-4 ${STAGGER[i]}`}
+            type="button"
+            aria-pressed={selected}
+            onClick={() => onSelect(s.status)}
+            className={`rr-rise rounded-xl text-left focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-none ${STAGGER[i]}`}
           >
-            <div className="grid gap-1">
-              <div className="flex items-center gap-2">
+            <LayerCard
+              className={`h-full px-5 py-4 hover:bg-kumo-tint ${
+                selected ? "ring-2 ring-kumo-brand" : ""
+              }`}
+            >
+              <div className="grid gap-1">
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${s.dot} ${
+                      s.alert && count > 0 ? "rr-pulse" : ""
+                    }`}
+                  />
+                  <Text size="sm" variant="secondary">
+                    {s.label}
+                  </Text>
+                </div>
                 <span
-                  className={`h-1.5 w-1.5 rounded-full ${s.dot} ${
-                    s.alert && count > 0 ? "rr-pulse" : ""
+                  className={`text-2xl font-semibold tabular-nums ${
+                    count > 0 ? s.activeText : "text-kumo-subtle"
                   }`}
-                />
-                <Text size="sm" variant="secondary">
-                  {s.label}
-                </Text>
+                >
+                  {count}
+                </span>
               </div>
-              <span
-                className={`text-2xl font-semibold tabular-nums ${
-                  count > 0 ? s.activeText : "text-kumo-subtle"
-                }`}
-              >
-                {count}
-              </span>
-            </div>
-          </LayerCard>
+            </LayerCard>
+          </button>
         );
       })}
     </div>

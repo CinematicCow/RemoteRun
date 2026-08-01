@@ -16,9 +16,58 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { api } from "../api";
+import { CopyButton } from "./CopyButton";
 import type { LogLine } from "../types";
 
 const MAX_LINES = 1000;
+
+type LogLevel = "debug" | "info" | "warn" | "error";
+
+const LEVEL_RE = /\[(TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|ERR|FATAL)\]/i;
+
+function logLevel(line: string): LogLevel | null {
+  const m = LEVEL_RE.exec(line);
+  if (!m) return null;
+  const t = m[1].toUpperCase();
+  if (t === "WARN" || t === "WARNING") return "warn";
+  if (t === "ERROR" || t === "ERR" || t === "FATAL") return "error";
+  if (t === "INFO") return "info";
+  return "debug"; // DEBUG, TRACE
+}
+
+const LEVELS: {
+  key: LogLevel;
+  label: string;
+  /** Active chip colors. */
+  chip: string;
+  /** Line text color. */
+  text: string;
+}[] = [
+  {
+    key: "debug",
+    label: "Debug",
+    chip: "bg-kumo-fill text-kumo-default",
+    text: "text-kumo-subtle",
+  },
+  {
+    key: "info",
+    label: "Info",
+    chip: "bg-kumo-info-tint text-kumo-info",
+    text: "text-kumo-default",
+  },
+  {
+    key: "warn",
+    label: "Warn",
+    chip: "bg-kumo-warning-tint text-kumo-warning",
+    text: "text-kumo-warning",
+  },
+  {
+    key: "error",
+    label: "Error",
+    chip: "bg-kumo-danger-tint text-kumo-danger",
+    text: "text-kumo-danger",
+  },
+];
 
 const timeFmt = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -37,6 +86,12 @@ export function LogViewer({ name }: { name: string }) {
   const [live, setLive] = useState(false);
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState("");
+  const [levels, setLevels] = useState<Record<LogLevel, boolean>>({
+    debug: true,
+    info: true,
+    warn: true,
+    error: true,
+  });
   const [pinned, setPinned] = useState(true);
   const [unseen, setUnseen] = useState(0);
 
@@ -86,17 +141,28 @@ export function LogViewer({ name }: { name: string }) {
     };
   }, [name]);
 
+  const allLevelsOn = Object.values(levels).every(Boolean);
+
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    if (!q) return lines;
-    return lines.filter((l) => l.line.toLowerCase().includes(q));
-  }, [lines, filter]);
+    return lines.filter((l) => {
+      if (q && !l.line.toLowerCase().includes(q)) return false;
+      if (allLevelsOn) return true;
+      /* When filtering by level, unclassified lines drop out. */
+      const lvl = logLevel(l.line);
+      return lvl != null && levels[lvl];
+    });
+  }, [lines, filter, levels, allLevelsOn]);
+
+
 
   const jumpToLatest = () => {
-    virtuosoRef.current?.scrollToIndex({
-      index: visible.length - 1,
-      align: "end",
-    });
+    if (visible.length > 0) {
+      virtuosoRef.current?.scrollToIndex({
+        index: visible.length - 1,
+        align: "end",
+      });
+    }
     setPinned(true);
     setUnseen(0);
   };
@@ -151,8 +217,28 @@ export function LogViewer({ name }: { name: string }) {
         </div>
       </div>
 
-      <div className="mb-3 flex items-center gap-2">
-        <InputGroup className="relative z-0 flex-1">
+      <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <div className="flex items-center gap-1" role="group" aria-label="Filter by level">
+          {LEVELS.map((lvl) => {
+            const on = levels[lvl.key];
+            return (
+              <button
+                key={lvl.key}
+                type="button"
+                aria-pressed={on}
+                onClick={() => setLevels((s) => ({ ...s, [lvl.key]: !s[lvl.key] }))}
+                className={`rounded-full px-2 py-0.5 text-xs font-medium focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-none ${
+                  on
+                    ? lvl.chip
+                    : "text-kumo-subtle ring-1 ring-kumo-hairline hover:bg-kumo-tint"
+                }`}
+              >
+                {lvl.label}
+              </button>
+            );
+          })}
+        </div>
+        <InputGroup className="relative z-0 sm:min-w-40 sm:flex-1">
           <InputGroup.Addon>
             <MagnifyingGlassIcon size={16} />
           </InputGroup.Addon>
@@ -163,34 +249,40 @@ export function LogViewer({ name }: { name: string }) {
             onChange={(e) => setFilter(e.target.value)}
           />
         </InputGroup>
-        <Tooltip
-          content={paused ? "Resume stream" : "Pause stream"}
-          render={
-            <Button
-              variant="secondary"
-              shape="square"
-              icon={paused ? <PlayIcon size={16} /> : <PauseIcon size={16} />}
-              aria-label={paused ? "Resume stream" : "Pause stream"}
-              onClick={togglePause}
-            />
-          }
-        />
-        <Tooltip
-          content="Clear output"
-          render={
-            <Button
-              variant="secondary"
-              shape="square"
-              icon={<BroomIcon size={16} />}
-              aria-label="Clear output"
-              onClick={() => {
-                setLines([]);
-                setUnseen(0);
-                pendingRef.current = [];
-              }}
-            />
-          }
-        />
+        <div className="flex items-center gap-2">
+          <CopyButton
+            getText={() => visible.map((l) => `${l.ts} ${l.line}`).join("\n")}
+            label="Copy logs"
+          />
+          <Tooltip
+            content={paused ? "Resume stream" : "Pause stream"}
+            render={
+              <Button
+                variant="secondary"
+                shape="square"
+                icon={paused ? <PlayIcon size={16} /> : <PauseIcon size={16} />}
+                aria-label={paused ? "Resume stream" : "Pause stream"}
+                onClick={togglePause}
+              />
+            }
+          />
+          <Tooltip
+            content="Clear output"
+            render={
+              <Button
+                variant="secondary"
+                shape="square"
+                icon={<BroomIcon size={16} />}
+                aria-label="Clear output"
+                onClick={() => {
+                  setLines([]);
+                  setUnseen(0);
+                  pendingRef.current = [];
+                }}
+              />
+            }
+          />
+        </div>
       </div>
 
       <div className="relative">
@@ -217,20 +309,20 @@ export function LogViewer({ name }: { name: string }) {
                 </div>
               ),
             }}
-            itemContent={(_i, l) => (
-              <div className="whitespace-pre-wrap break-all px-3">
-                <span className="mr-2 text-kumo-subtle">{formatTs(l.ts)}</span>
-                <span
-                  className={
-                    l.stream === "stderr"
-                      ? "text-kumo-danger"
-                      : "text-kumo-default"
-                  }
-                >
-                  {l.line}
-                </span>
-              </div>
-            )}
+            itemContent={(_i, l) => {
+              const lvl = logLevel(l.line);
+              const tone = lvl
+                ? LEVELS.find((x) => x.key === lvl)!.text
+                : l.stream === "stderr"
+                  ? "text-kumo-danger"
+                  : "text-kumo-default";
+              return (
+                <div className="whitespace-pre-wrap break-all px-3">
+                  <span className="mr-2 text-kumo-subtle">{formatTs(l.ts)}</span>
+                  <span className={tone}>{l.line}</span>
+                </div>
+              );
+            }}
           />
         </div>
 

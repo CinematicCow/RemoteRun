@@ -91,6 +91,7 @@ export function StartProcessDialog({
           )}
           <Input
             label="Name"
+            description="A short label to stop, restart, or tail it later."
             placeholder="api"
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -98,6 +99,7 @@ export function StartProcessDialog({
           />
           <Input
             label="Command"
+            description="Run via the shell; the daemon restarts it if it crashes."
             placeholder="bun start"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
