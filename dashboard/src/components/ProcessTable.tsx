@@ -158,6 +158,11 @@ function ProcessDetails({
       <div className="flex flex-wrap gap-x-10 gap-y-3">
         <Meta label="Pid" value={p.pid != null ? String(p.pid) : "—"} />
         <Meta label="Uptime" value={displayUptime(p, fetchedAt, now)} />
+        <Meta label="Restarts" value={String(p.restarts)} />
+        <Meta
+          label="Last crash"
+          value={p.last_crash_at != null ? formatAgo(p.last_crash_at) : "—"}
+        />
         <Meta
           label="Last exit code"
           value={p.last_exit_code != null ? String(p.last_exit_code) : "—"}
@@ -176,37 +181,6 @@ function ProcessDetails({
         </Button>
       </div>
     </div>
-  );
-}
-
-/** Compact secondary line for mobile cards. Deliberately monochrome —
- *  status color lives in the badge and the edge stripe, nowhere else. */
-function CardMeta({
-  p,
-  fetchedAt,
-  now,
-}: {
-  p: ProcessInfo;
-  fetchedAt: number;
-  now: number;
-}) {
-  const parts: string[] = [];
-  if (p.uptime_secs != null) {
-    parts.push(`up ${displayUptime(p, fetchedAt, now)}`);
-  }
-  if (p.restarts > 0) {
-    parts.push(`${p.restarts} ${p.restarts === 1 ? "restart" : "restarts"}`);
-  }
-  if (p.last_crash_at != null) {
-    parts.push(`crashed ${formatAgo(p.last_crash_at)}`);
-  }
-  if (parts.length === 0) {
-    parts.push(`created ${formatAgo(p.created_at)}`);
-  }
-  return (
-    <span className="truncate text-xs tabular-nums text-kumo-subtle">
-      {parts.join(" · ")}
-    </span>
   );
 }
 
@@ -241,23 +215,17 @@ export function ProcessTable({
                   type="button"
                   onClick={() => toggle(p.name)}
                   aria-expanded={open}
-                  className="min-w-0 flex-1 py-3 pl-3.5 text-left"
+                  className="flex min-w-0 flex-1 items-center justify-between gap-2 py-3.5 pl-3.5 text-left"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <Caret open={open} />
-                      <span className="truncate text-sm font-medium text-kumo-default">
-                        {p.name}
-                      </span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Caret open={open} />
+                    <span className="truncate text-sm font-medium text-kumo-default">
+                      {p.name}
                     </span>
-                    <Badge variant={statusBadge[p.status]} appearance="dot">
-                      {p.status}
-                    </Badge>
-                  </div>
-                  {/* Indented to align under the name, past the caret. */}
-                  <div className="mt-1 flex pl-[18px]">
-                    <CardMeta p={p} fetchedAt={fetchedAt} now={now} />
-                  </div>
+                  </span>
+                  <Badge variant={statusBadge[p.status]} appearance="dot">
+                    {p.status}
+                  </Badge>
                 </button>
                 <div className="flex items-center px-1.5">
                   <ActionsMenu p={p} size="base" {...actions} />
