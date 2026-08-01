@@ -18,9 +18,11 @@ import {
   WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
+import { Drawer } from "vaul";
 import { api } from "./api";
 import type { ProcessInfo, ProcessStatus } from "./types";
 import { useColorMode } from "./useColorMode";
+import { useIsMobile } from "./useMediaQuery";
 import { useNow } from "./useNow";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { StatCards, type StatusFilter } from "./components/StatCards";
@@ -49,6 +51,10 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const [selectedLogs, setSelectedLogs] = useState<string | null>(null);
+  /* Keep the last-opened process mounted through the close animation. */
+  const shownLogs = useRef<string | null>(null);
+  if (selectedLogs) shownLogs.current = selectedLogs;
+  const isMobile = useIsMobile();
   const [pendingRemove, setPendingRemove] = useState<ProcessInfo | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | undefined>();
@@ -335,14 +341,40 @@ export default function App() {
         }}
       />
 
-      <Dialog.Root
-        open={selectedLogs !== null}
-        onOpenChange={(open) => !open && setSelectedLogs(null)}
-      >
-        <Dialog size="xl" className="p-6">
-          {selectedLogs && <LogViewer name={selectedLogs} />}
-        </Dialog>
-      </Dialog.Root>
+      {isMobile ? (
+        <Drawer.Root
+          open={selectedLogs !== null}
+          onOpenChange={(open) => !open && setSelectedLogs(null)}
+        >
+          <Drawer.Portal>
+            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/60" />
+            <Drawer.Content
+              aria-describedby={undefined}
+              className="fixed inset-x-0 bottom-0 z-50 flex h-[94dvh] flex-col rounded-t-2xl bg-kumo-base shadow-2xl ring ring-kumo-line outline-none"
+            >
+              <Drawer.Handle className="mx-auto mt-2.5 mb-1 h-1 w-9 shrink-0 rounded-full bg-kumo-fill" />
+              <div className="flex min-h-0 flex-1 flex-col px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                {shownLogs.current && (
+                  <LogViewer
+                    name={shownLogs.current}
+                    chrome="drawer"
+                    onClose={() => setSelectedLogs(null)}
+                  />
+                )}
+              </div>
+            </Drawer.Content>
+          </Drawer.Portal>
+        </Drawer.Root>
+      ) : (
+        <Dialog.Root
+          open={selectedLogs !== null}
+          onOpenChange={(open) => !open && setSelectedLogs(null)}
+        >
+          <Dialog size="xl" className="p-6">
+            {shownLogs.current && <LogViewer name={shownLogs.current} />}
+          </Dialog>
+        </Dialog.Root>
+      )}
 
       <DeleteResource
         open={pendingRemove !== null}
