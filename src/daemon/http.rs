@@ -31,7 +31,14 @@ pub fn port() -> u16 {
 #[folder = "dashboard/dist"]
 struct Assets;
 
-pub async fn serve(core: Arc<Core>) -> std::io::Result<()> {
+/// Bind the dashboard port. Done before anything else at daemon startup so a
+/// port conflict fails loudly instead of killing an already-serving daemon.
+pub async fn bind() -> std::io::Result<tokio::net::TcpListener> {
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port()));
+    tokio::net::TcpListener::bind(addr).await
+}
+
+pub async fn serve(core: Arc<Core>, listener: tokio::net::TcpListener) -> std::io::Result<()> {
     let app = axum::Router::new()
         .route("/api/ps", get(ps))
         .route("/api/start", post(start))
@@ -43,9 +50,7 @@ pub async fn serve(core: Arc<Core>) -> std::io::Result<()> {
         .fallback(static_asset)
         .with_state(core);
 
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port()));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("rr: dashboard on http://{addr}");
+    println!("rr: dashboard on http://{}", listener.local_addr()?);
     axum::serve(listener, app).await
 }
 

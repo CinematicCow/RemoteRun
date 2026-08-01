@@ -61,7 +61,7 @@ fn ensure_daemon() -> Result<UnixStream, String> {
         .map_err(|e| format!("cannot open daemon log: {e}"))?;
     let log2 = log.try_clone().map_err(|e| e.to_string())?;
 
-    std::process::Command::new(exe)
+    let mut child = std::process::Command::new(exe)
         .arg("__daemon")
         .stdin(std::process::Stdio::null())
         .stdout(log)
@@ -75,11 +75,29 @@ fn ensure_daemon() -> Result<UnixStream, String> {
         if let Ok(stream) = UnixStream::connect(&sock) {
             return Ok(stream);
         }
+        // Daemon exited instead of coming up: report its error right away.
+        if child.try_wait().ok().flatten().is_some() {
+            return Err(format!("daemon failed to start:{}", daemon_log_tail(3)));
+        }
     }
     Err(format!(
-        "daemon did not come up; check {}",
-        paths::daemon_log_path().display()
+        "daemon did not come up:{}",
+        daemon_log_tail(3)
     ))
+}
+
+/// Last `n` lines of the daemon log, prefixed with newlines for display.
+fn daemon_log_tail(n: usize) -> String {
+    let path = paths::daemon_log_path();
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return format!(" check {}", path.display());
+    };
+    let lines: Vec<&str> = content.lines().rev().take(n).collect();
+    lines
+        .into_iter()
+        .rev()
+        .map(|l| format!("\n  {l}"))
+        .collect()
 }
 
 fn print_process(p: &ProcessInfo) {

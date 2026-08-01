@@ -17,6 +17,20 @@ pub fn run() -> std::io::Result<()> {
 
 async fn async_main() -> std::io::Result<()> {
     std::fs::create_dir_all(paths::data_dir())?;
+
+    // Claim the dashboard port first: if it's taken we must die *before*
+    // touching the socket, otherwise we'd tear down a half-started daemon.
+    let http_listener = match http::bind().await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!(
+                "rr: cannot bind dashboard port {}: {e} (another daemon? set RR_PORT to change)",
+                http::port()
+            );
+            std::process::exit(1);
+        }
+    };
+
     let sock = paths::socket_path();
 
     // Singleton: a live daemon accepts connections. A connect failure with a
@@ -33,7 +47,7 @@ async fn async_main() -> std::io::Result<()> {
 
     tokio::select! {
         _ = rpc::serve(core.clone(), listener) => {}
-        res = http::serve(core.clone()) => {
+        res = http::serve(core.clone(), http_listener) => {
             if let Err(e) = res {
                 eprintln!("rr: http server failed: {e}");
             }
