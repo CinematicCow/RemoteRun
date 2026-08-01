@@ -15,6 +15,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import { formatAgo, formatUptime } from "../api";
+import { useNow } from "../useNow";
 import type { ProcessInfo, ProcessStatus } from "../types";
 
 const statusBadge: Record<
@@ -37,8 +38,7 @@ export interface ProcessActions {
 interface Props extends ProcessActions {
   processes: ProcessInfo[];
   /** When the current process snapshot was fetched (for live uptime ticks). */
-  fetchedAt: number;
-  now: number;
+  fetchedAtRef: React.RefObject<number>;
 }
 
 function displayUptime(p: ProcessInfo, fetchedAt: number, now: number): string {
@@ -50,13 +50,26 @@ function displayUptime(p: ProcessInfo, fetchedAt: number, now: number): string {
   return formatUptime(p.uptime_secs + extra);
 }
 
+/** The only piece of the page that re-renders every second. Keeping the
+ *  clock in this leaf means uptime ticks without re-rendering the table. */
+function LiveUptime({
+  p,
+  fetchedAtRef,
+}: {
+  p: ProcessInfo;
+  fetchedAtRef: React.RefObject<number>;
+}) {
+  const now = useNow(1000);
+  return <>{displayUptime(p, fetchedAtRef.current, now)}</>;
+}
+
 function Meta({
   label,
   value,
   mono,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   mono?: boolean;
 }) {
   return (
@@ -140,13 +153,11 @@ function Caret({ open }: { open: boolean }) {
 /** Expanded detail block, shared by the desktop table and mobile cards. */
 function ProcessDetails({
   p,
-  fetchedAt,
-  now,
+  fetchedAtRef,
   onLogs,
 }: {
   p: ProcessInfo;
-  fetchedAt: number;
-  now: number;
+  fetchedAtRef: React.RefObject<number>;
   onLogs: (name: string) => void;
 }) {
   return (
@@ -157,7 +168,10 @@ function ProcessDetails({
       </div>
       <div className="flex flex-wrap gap-x-10 gap-y-3">
         <Meta label="Pid" value={p.pid != null ? String(p.pid) : "—"} />
-        <Meta label="Uptime" value={displayUptime(p, fetchedAt, now)} />
+        <Meta
+          label="Uptime"
+          value={<LiveUptime p={p} fetchedAtRef={fetchedAtRef} />}
+        />
         <Meta label="Restarts" value={String(p.restarts)} />
         <Meta
           label="Last crash"
@@ -186,8 +200,7 @@ function ProcessDetails({
 
 export function ProcessTable({
   processes,
-  fetchedAt,
-  now,
+  fetchedAtRef,
   onLogs,
   onRestart,
   onStop,
@@ -235,8 +248,7 @@ export function ProcessTable({
                 <div className="border-t border-kumo-hairline px-3.5 py-3">
                   <ProcessDetails
                     p={p}
-                    fetchedAt={fetchedAt}
-                    now={now}
+                    fetchedAtRef={fetchedAtRef}
                     onLogs={onLogs}
                   />
                 </div>
@@ -290,7 +302,7 @@ export function ProcessTable({
                             : "text-kumo-subtle"
                         }`}
                       >
-                        {displayUptime(p, fetchedAt, now)}
+                        <LiveUptime p={p} fetchedAtRef={fetchedAtRef} />
                       </span>
                     </Table.Cell>
                     <Table.Cell>
@@ -326,8 +338,7 @@ export function ProcessTable({
                         <div className="px-1 py-1">
                           <ProcessDetails
                             p={p}
-                            fetchedAt={fetchedAt}
-                            now={now}
+                            fetchedAtRef={fetchedAtRef}
                             onLogs={onLogs}
                           />
                         </div>

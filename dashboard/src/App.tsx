@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Badge,
   Banner,
@@ -23,12 +31,24 @@ import { api } from "./api";
 import type { ProcessInfo, ProcessStatus } from "./types";
 import { useColorMode } from "./useColorMode";
 import { useIsMobile } from "./useMediaQuery";
-import { useNow } from "./useNow";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { StatCards, type StatusFilter } from "./components/StatCards";
 import { ProcessTable } from "./components/ProcessTable";
-import { LogViewer } from "./components/LogViewer";
 import { StartProcessDialog } from "./components/StartProcessDialog";
+
+/* Log viewing pulls in react-virtuoso; keep it out of the initial bundle —
+   it only loads the first time a log panel opens. */
+const LogViewer = lazy(() =>
+  import("./components/LogViewer").then((m) => ({ default: m.LogViewer })),
+);
+
+function LogViewerFallback() {
+  return (
+    <div className="flex h-[52vh] items-center justify-center">
+      <Loader className="text-kumo-subtle" />
+    </div>
+  );
+}
 
 const POLL_MS = 2000;
 
@@ -39,10 +59,11 @@ function errorMessage(e: unknown): string {
 export default function App() {
   const { isDark, toggle } = useColorMode();
   const toastManager = useKumoToastManager();
-  const now = useNow(1000);
 
   const [processes, setProcesses] = useState<ProcessInfo[] | null>(null);
-  const [fetchedAt, setFetchedAt] = useState(0);
+  /* A ref, not state: only the per-second uptime leaves read it, and they
+     re-render on their own clock — polls shouldn't re-render the app. */
+  const fetchedAtRef = useRef(0);
   const [daemonError, setDaemonError] = useState<string | null>(null);
   const daemonDown = useRef(false);
   const failures = useRef(0);
@@ -63,8 +84,14 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       const { processes } = await api.ps();
-      setProcesses(processes);
-      setFetchedAt(Date.now());
+      fetchedAtRef.current = Date.now();
+      /* Identical snapshot (e.g. everything stopped) → keep the previous
+         array so nothing below re-renders. */
+      setProcesses((prev) =>
+        prev != null && JSON.stringify(prev) === JSON.stringify(processes)
+          ? prev
+          : processes,
+      );
       setDaemonError(null);
       daemonDown.current = false;
       failures.current = 0;
@@ -313,8 +340,7 @@ export default function App() {
         ) : (
           <ProcessTable
             processes={filtered}
-            fetchedAt={fetchedAt}
-            now={now}
+            fetchedAtRef={fetchedAtRef}
             onLogs={setSelectedLogs}
             onRestart={(name) =>
               act(() => api.restart(name), `Couldn't restart ${name}`)
@@ -355,11 +381,13 @@ export default function App() {
               <Drawer.Handle className="mx-auto mt-2.5 mb-1 h-1 w-9 shrink-0 rounded-full bg-kumo-fill" />
               <div className="flex min-h-0 flex-1 flex-col px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 {shownLogs.current && (
-                  <LogViewer
-                    name={shownLogs.current}
-                    chrome="drawer"
-                    onClose={() => setSelectedLogs(null)}
-                  />
+                  <Suspense fallback={<LogViewerFallback />}>
+                    <LogViewer
+                      name={shownLogs.current}
+                      chrome="drawer"
+                      onClose={() => setSelectedLogs(null)}
+                    />
+                  </Suspense>
                 )}
               </div>
             </Drawer.Content>
@@ -371,7 +399,11 @@ export default function App() {
           onOpenChange={(open) => !open && setSelectedLogs(null)}
         >
           <Dialog size="xl" className="p-6">
-            {shownLogs.current && <LogViewer name={shownLogs.current} />}
+            {shownLogs.current && (
+              <Suspense fallback={<LogViewerFallback />}>
+                <LogViewer name={shownLogs.current} />
+              </Suspense>
+            )}
           </Dialog>
         </Dialog.Root>
       )}
