@@ -19,12 +19,24 @@ use super::core::Core;
 use crate::protocol::{Request, Response};
 
 pub const DEFAULT_PORT: u16 = 7070;
+const DEFAULT_HOST: std::net::Ipv4Addr = std::net::Ipv4Addr::LOCALHOST;
 
 pub fn port() -> u16 {
     std::env::var("RR_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(DEFAULT_PORT)
+}
+
+/// Bind address for the dashboard. Defaults to loopback-only, since the
+/// dashboard has no auth — set `RR_HOST` (e.g. to a LAN IP) to expose it
+/// beyond this machine, understanding that anyone who can reach that address
+/// gets unauthenticated control over every managed process.
+fn host() -> std::net::Ipv4Addr {
+    std::env::var("RR_HOST")
+        .ok()
+        .and_then(|h| h.parse().ok())
+        .unwrap_or(DEFAULT_HOST)
 }
 
 #[derive(RustEmbed)]
@@ -34,7 +46,7 @@ struct Assets;
 /// Bind the dashboard port. Done before anything else at daemon startup so a
 /// port conflict fails loudly instead of killing an already-serving daemon.
 pub async fn bind() -> std::io::Result<tokio::net::TcpListener> {
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port()));
+    let addr = std::net::SocketAddr::from((host(), port()));
     tokio::net::TcpListener::bind(addr).await
 }
 
