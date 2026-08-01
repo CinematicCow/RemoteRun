@@ -1,6 +1,8 @@
 mod cli;
+mod daemon;
 mod paths;
 mod protocol;
+mod util;
 
 use clap::Parser;
 use cli::{Cli, Cmd};
