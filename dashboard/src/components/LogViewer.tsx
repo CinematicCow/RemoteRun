@@ -105,6 +105,19 @@ export function LogViewer({
     setUnseen(0);
     pendingRef.current = [];
 
+    /* Chatty processes can emit dozens of lines between frames; buffer them
+       and commit once per animation frame instead of one render per line. */
+    let batch: LogLine[] = [];
+    let frame: number | null = null;
+    const flush = () => {
+      frame = null;
+      const commit = batch;
+      batch = [];
+      if (cancelled || commit.length === 0) return;
+      setLines((prev) => [...prev, ...commit].slice(-MAX_LINES));
+      if (!pinnedRef.current) setUnseen((n) => n + commit.length);
+    };
+
     api
       .history(name)
       .then(({ lines }) => {
@@ -122,14 +135,18 @@ export function LogViewer({
             }
             return;
           }
-          setLines((prev) => [...prev.slice(-(MAX_LINES - 1)), line]);
-          if (!pinnedRef.current) setUnseen((n) => n + 1);
+          batch.push(line);
+          if (batch.length > MAX_LINES) {
+            batch.splice(0, batch.length - MAX_LINES);
+          }
+          frame ??= requestAnimationFrame(flush);
         };
       })
       .catch(() => {});
 
     return () => {
       cancelled = true;
+      if (frame != null) cancelAnimationFrame(frame);
       source?.close();
     };
   }, [name]);
