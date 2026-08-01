@@ -7,6 +7,8 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use nix::sys::signal::{Signal, killpg};
+use nix::unistd::Pid;
 use tokio::process::{Child, Command};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -186,19 +188,20 @@ async fn terminate(child: &mut Child) {
     let Some(pid) = child.id() else {
         return; // already reaped
     };
-    signal_group(pid, libc::SIGTERM);
+    signal_group(pid, Signal::SIGTERM);
     if tokio::time::timeout(KILL_GRACE, child.wait()).await.is_err() {
-        signal_group(pid, libc::SIGKILL);
+        signal_group(pid, Signal::SIGKILL);
         let _ = child.wait().await;
     }
 }
 
-fn signal_group(pid: u32, sig: i32) {
-    // Negative pid targets the whole process group (pgid == child pid,
-    // because we spawn with process_group(0)).
-    unsafe {
-        libc::kill(-(pid as i32), sig);
-    }
+/// Signal the child's whole process group (pgid == child pid, because we
+/// spawn with `process_group(0)`).
+fn signal_group(pid: u32, sig: Signal) {
+    let Ok(pid) = i32::try_from(pid) else {
+        return;
+    };
+    let _ = killpg(Pid::from_raw(pid), sig);
 }
 
 #[cfg(test)]
