@@ -79,8 +79,7 @@ async fn handle_conn(core: Arc<Core>, stream: UnixStream) -> std::io::Result<()>
                             // Write error == client hung up; we're done.
                             write_response(&mut w, &Response::LogLine { line }).await?;
                         }
-                        Ok(_) => {}
-                        Err(RecvError::Lagged(_)) => {}
+                        Ok(_) | Err(RecvError::Lagged(_)) => {}
                         Err(RecvError::Closed) => break,
                     }
                 }

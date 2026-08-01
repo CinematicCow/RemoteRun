@@ -85,9 +85,7 @@ struct StartBody {
 
 async fn start(State(core): State<Arc<Core>>, Json(body): Json<StartBody>) -> HttpResponse {
     let cwd = body.cwd.filter(|c| !c.trim().is_empty()).unwrap_or_else(|| {
-        dirs::home_dir()
-            .map(|h| h.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "/".into())
+        dirs::home_dir().map_or_else(|| "/".into(), |h| h.to_string_lossy().into_owned())
     });
     to_http(
         core.handle(Request::Start {
@@ -117,7 +115,7 @@ struct HistoryQuery {
     lines: usize,
 }
 
-fn default_lines() -> usize {
+const fn default_lines() -> usize {
     100
 }
 
@@ -159,9 +157,14 @@ async fn static_asset(uri: Uri) -> HttpResponse {
     match asset {
         Some(content) => {
             let mime = mime_guess::from_path(path).first_or_text_plain();
+            // Embedded (release) assets are 'static — serve them zero-copy.
+            let body = match content.data {
+                std::borrow::Cow::Borrowed(b) => axum::body::Bytes::from_static(b),
+                std::borrow::Cow::Owned(v) => axum::body::Bytes::from(v),
+            };
             (
                 [(header::CONTENT_TYPE, mime.as_ref().to_string())],
-                content.data.into_owned(),
+                body,
             )
                 .into_response()
         }

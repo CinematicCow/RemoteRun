@@ -60,7 +60,15 @@ impl LogManager {
                 }
             };
             let mut lines = BufReader::new(reader).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
+            loop {
+                let line = match lines.next_line().await {
+                    Ok(Some(line)) => line,
+                    Ok(None) => break, // EOF: child exited
+                    Err(e) => {
+                        eprintln!("rr: log read failed for {name}: {e}");
+                        break;
+                    }
+                };
                 let entry = LogLine {
                     name: name.clone(),
                     stream,

@@ -55,10 +55,10 @@ pub enum ProcessStatus {
 impl std::fmt::Display for ProcessStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            ProcessStatus::Running => "running",
-            ProcessStatus::Stopped => "stopped",
-            ProcessStatus::Crashed => "crashed",
-            ProcessStatus::Backoff => "backoff",
+            Self::Running => "running",
+            Self::Stopped => "stopped",
+            Self::Crashed => "crashed",
+            Self::Backoff => "backoff",
         };
         f.write_str(s)
     }

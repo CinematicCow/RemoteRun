@@ -33,7 +33,7 @@ pub struct ProcEntry {
 }
 
 impl ProcEntry {
-    fn new(spec: ProcSpec) -> Self {
+    const fn new(spec: ProcSpec) -> Self {
         Self {
             spec,
             status: ProcessStatus::Stopped,
@@ -53,7 +53,9 @@ impl ProcEntry {
             status: self.status,
             pid: self.pid,
             uptime_secs: match (self.status, self.started_at) {
-                (ProcessStatus::Running, Some(at)) => Some((now_ts() - at).max(0) as u64),
+                (ProcessStatus::Running, Some(at)) => {
+                    Some(u64::try_from(now_ts() - at).unwrap_or(0))
+                }
                 _ => None,
             },
             restarts: self.restarts,
@@ -99,16 +101,22 @@ impl Store {
 
     fn save_locked(&self, entries: &HashMap<String, ProcEntry>) -> std::io::Result<()> {
         let mut specs: Vec<ProcSpec> = entries.values().map(|e| e.spec.clone()).collect();
-        specs.sort_by_key(|s| (s.created_at, s.name.clone()));
+        specs.sort_by(|a, b| (a.created_at, &a.name).cmp(&(b.created_at, &b.name)));
         let state = PersistedState { processes: specs };
         let tmp = self.path.with_extension("json.tmp");
         std::fs::write(&tmp, serde_json::to_vec_pretty(&state)?)?;
         std::fs::rename(&tmp, &self.path)
     }
 
+    /// A poisoned lock means another thread panicked mid-update; that is a
+    /// bug, not a recoverable condition, so `expect` is appropriate.
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, ProcEntry>> {
+        self.entries.lock().expect("state lock poisoned")
+    }
+
     /// Register a new process spec. Fails if the name is taken.
     pub fn insert(&self, spec: ProcSpec) -> Result<(), String> {
-        let mut entries = self.entries.lock().unwrap();
+        let mut entries = self.lock();
         if entries.contains_key(&spec.name) {
             return Err(format!("process '{}' already exists", spec.name));
         }
@@ -119,7 +127,7 @@ impl Store {
 
     /// Remove a process. Fails if it is not currently stopped/crashed.
     pub fn remove(&self, name: &str) -> Result<(), String> {
-        let mut entries = self.entries.lock().unwrap();
+        let mut entries = self.lock();
         let entry = entries
             .get(name)
             .ok_or_else(|| format!("no such process: {name}"))?;
@@ -135,24 +143,23 @@ impl Store {
     }
 
     pub fn contains(&self, name: &str) -> bool {
-        self.entries.lock().unwrap().contains_key(name)
+        self.lock().contains_key(name)
     }
 
     pub fn info(&self, name: &str) -> Option<ProcessInfo> {
-        self.entries.lock().unwrap().get(name).map(|e| e.info())
+        self.lock().get(name).map(ProcEntry::info)
     }
 
     /// All processes, oldest first.
     pub fn list(&self) -> Vec<ProcessInfo> {
-        let entries = self.entries.lock().unwrap();
-        let mut infos: Vec<ProcessInfo> = entries.values().map(|e| e.info()).collect();
-        infos.sort_by_key(|i| (i.created_at, i.name.clone()));
+        let mut infos: Vec<ProcessInfo> = self.lock().values().map(ProcEntry::info).collect();
+        infos.sort_by(|a, b| (a.created_at, &a.name).cmp(&(b.created_at, &b.name)));
         infos
     }
 
     /// Mutate one entry's runtime state (not persisted).
     pub fn update<F: FnOnce(&mut ProcEntry)>(&self, name: &str, f: F) {
-        if let Some(entry) = self.entries.lock().unwrap().get_mut(name) {
+        if let Some(entry) = self.lock().get_mut(name) {
             f(entry);
         }
     }

@@ -1,6 +1,7 @@
 //! CLI side: connects to the daemon over the unix socket, auto-starting the
 //! daemon if it isn't running, and renders responses for the terminal.
 
+use std::fmt::Write as _;
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -9,14 +10,14 @@ use std::time::Duration;
 use crate::paths;
 use crate::protocol::{LogStream, ProcessInfo, Request, Response};
 
-pub fn run(req: Request) -> Result<(), String> {
+pub fn run(req: &Request) -> Result<(), String> {
     let stream = ensure_daemon()?;
     let follow_logs = matches!(req, Request::Logs { follow: true, .. });
 
     let mut writer = stream
         .try_clone()
         .map_err(|e| format!("socket error: {e}"))?;
-    let mut line = serde_json::to_string(&req).map_err(|e| e.to_string())?;
+    let mut line = serde_json::to_string(req).map_err(|e| e.to_string())?;
     line.push('\n');
     writer
         .write_all(line.as_bytes())
@@ -93,16 +94,20 @@ fn daemon_log_tail(n: usize) -> String {
         return format!(" check {}", path.display());
     };
     let lines: Vec<&str> = content.lines().rev().take(n).collect();
-    lines
-        .into_iter()
-        .rev()
-        .map(|l| format!("\n  {l}"))
-        .collect()
+    let mut out = String::new();
+    for line in lines.into_iter().rev() {
+        let _ = write!(out, "\n  {line}");
+    }
+    out
+}
+
+/// Render an optional value for table output, `-` when absent.
+fn or_dash<T: ToString>(value: Option<T>) -> String {
+    value.map_or_else(|| "-".to_owned(), |v| v.to_string())
 }
 
 fn print_process(p: &ProcessInfo) {
-    let pid = p.pid.map_or("-".into(), |pid| pid.to_string());
-    println!("{}  {}  pid {}", p.name, p.status, pid);
+    println!("{}  {}  pid {}", p.name, p.status, or_dash(p.pid));
 }
 
 fn print_table(processes: &[ProcessInfo]) {
@@ -110,19 +115,16 @@ fn print_table(processes: &[ProcessInfo]) {
         println!("no processes (start one with `rr --name <name> \"<command>\"`)");
         return;
     }
-    println!(
-        "{:<16} {:<8} {:>7} {:>9} {:>8}  {:<9} {}",
-        "NAME", "STATUS", "PID", "UPTIME", "RESTARTS", "LAST EXIT", "COMMAND"
-    );
+    println!("NAME             STATUS       PID    UPTIME RESTARTS  LAST EXIT COMMAND");
     for p in processes {
         println!(
             "{:<16} {:<8} {:>7} {:>9} {:>8}  {:<9} {}",
             p.name,
             p.status.to_string(),
-            p.pid.map_or("-".into(), |pid| pid.to_string()),
-            p.uptime_secs.map_or("-".into(), format_duration),
+            or_dash(p.pid),
+            p.uptime_secs.map_or_else(|| "-".to_owned(), format_duration),
             p.restarts,
-            p.last_exit_code.map_or("-".into(), |c| c.to_string()),
+            or_dash(p.last_exit_code),
             p.command,
         );
     }

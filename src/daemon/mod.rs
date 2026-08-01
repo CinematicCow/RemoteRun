@@ -46,13 +46,13 @@ async fn async_main() -> std::io::Result<()> {
     println!("rr: daemon listening on {}", sock.display());
 
     tokio::select! {
-        _ = rpc::serve(core.clone(), listener) => {}
+        () = rpc::serve(core.clone(), listener) => {}
         res = http::serve(core.clone(), http_listener) => {
             if let Err(e) = res {
                 eprintln!("rr: http server failed: {e}");
             }
         }
-        _ = shutdown_signal() => {
+        () = shutdown_signal() => {
             println!("rr: daemon shutting down");
         }
     }

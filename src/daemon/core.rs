@@ -132,12 +132,12 @@ impl Core {
     }
 
     fn process_response(&self, name: &str) -> Response {
-        match self.store.info(name) {
-            Some(process) => Response::Process { process },
-            None => Response::Error {
+        self.store.info(name).map_or_else(
+            || Response::Error {
                 message: format!("no such process: {name}"),
             },
-        }
+            |process| Response::Process { process },
+        )
     }
 }
 

@@ -38,15 +38,15 @@ fn main() {
             }
             return;
         }
-        Some(Cmd::Ps) => client::run(Request::Ps),
-        Some(Cmd::Stop { name }) => client::run(Request::Stop { name }),
-        Some(Cmd::Restart { name }) => client::run(Request::Restart { name }),
-        Some(Cmd::Rm { name }) => client::run(Request::Remove { name }),
+        Some(Cmd::Ps) => client::run(&Request::Ps),
+        Some(Cmd::Stop { name }) => client::run(&Request::Stop { name }),
+        Some(Cmd::Restart { name }) => client::run(&Request::Restart { name }),
+        Some(Cmd::Rm { name }) => client::run(&Request::Remove { name }),
         Some(Cmd::Logs {
             name,
             lines,
             no_follow,
-        }) => client::run(Request::Logs {
+        }) => client::run(&Request::Logs {
             name,
             lines,
             follow: !no_follow,
@@ -71,7 +71,7 @@ fn start_command(cli: Cli) -> Result<(), String> {
         .map_err(|e| format!("cannot determine working directory: {e}"))?
         .to_string_lossy()
         .into_owned();
-    client::run(Request::Start {
+    client::run(&Request::Start {
         name,
         command: cli.run.join(" "),
         cwd,

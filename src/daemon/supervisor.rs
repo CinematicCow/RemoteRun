@@ -150,7 +150,7 @@ async fn supervise(
                 let delay = backoff_delay(attempt);
                 attempt += 1;
                 tokio::select! {
-                    _ = tokio::time::sleep(delay) => continue,
+                    () = tokio::time::sleep(delay) => {}
                     _ = stop_rx.changed() => {
                         store.update(&name, |p| p.status = ProcessStatus::Stopped);
                         return;
