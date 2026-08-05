@@ -10,7 +10,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  ps: () => request<{ processes: ProcessInfo[] }>("/api/ps"),
+  ps: () =>
+    request<{ processes: ProcessInfo[]; startEnabled: boolean }>("/api/ps"),
 
   start: (name: string, command: string) =>
     request<{ process: ProcessInfo }>("/api/start", {

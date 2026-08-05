@@ -64,6 +64,7 @@ export default function App() {
   /* A ref, not state: only the per-second uptime leaves read it, and they
      re-render on their own clock — polls shouldn't re-render the app. */
   const fetchedAtRef = useRef(0);
+  const [startEnabled, setStartEnabled] = useState(false);
   const [daemonError, setDaemonError] = useState<string | null>(null);
   const daemonDown = useRef(false);
   const failures = useRef(0);
@@ -83,7 +84,8 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const { processes } = await api.ps();
+      const { processes, startEnabled } = await api.ps();
+      setStartEnabled(startEnabled);
       fetchedAtRef.current = Date.now();
       /* Identical snapshot (e.g. everything stopped) → keep the previous
          array so nothing below re-renders. */
@@ -219,25 +221,29 @@ export default function App() {
               )}
             </span>
             <ThemeToggle isDark={isDark} onToggle={toggle} />
-            <span className="hidden h-4 w-px bg-kumo-line sm:block" />
-            <span className="hidden sm:block">
-              <Button
-                variant="primary"
-                icon={<PlusIcon size={16} />}
-                onClick={() => setStartOpen(true)}
-              >
-                Start process
-              </Button>
-            </span>
-            <span className="sm:hidden">
-              <Button
-                variant="primary"
-                shape="square"
-                icon={<PlusIcon size={16} />}
-                aria-label="Start process"
-                onClick={() => setStartOpen(true)}
-              />
-            </span>
+            {startEnabled && (
+              <>
+                <span className="hidden h-4 w-px bg-kumo-line sm:block" />
+                <span className="hidden sm:block">
+                  <Button
+                    variant="primary"
+                    icon={<PlusIcon size={16} />}
+                    onClick={() => setStartOpen(true)}
+                  >
+                    Start process
+                  </Button>
+                </span>
+                <span className="sm:hidden">
+                  <Button
+                    variant="primary"
+                    shape="square"
+                    icon={<PlusIcon size={16} />}
+                    aria-label="Start process"
+                    onClick={() => setStartOpen(true)}
+                  />
+                </span>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -304,16 +310,22 @@ export default function App() {
               size="sm"
               icon={<TerminalWindowIcon size={28} />}
               title="No processes yet"
-              description="Start one here, or from a terminal:"
+              description={
+                startEnabled
+                  ? "Start one here, or from a terminal:"
+                  : "Start one from a terminal:"
+              }
               commandLine='rr -n api "bun start"'
               contents={
-                <Button
-                  variant="primary"
-                  icon={<PlusIcon size={16} />}
-                  onClick={() => setStartOpen(true)}
-                >
-                  Start a process
-                </Button>
+                startEnabled && (
+                  <Button
+                    variant="primary"
+                    icon={<PlusIcon size={16} />}
+                    onClick={() => setStartOpen(true)}
+                  >
+                    Start a process
+                  </Button>
+                )
               }
             />
           </div>
