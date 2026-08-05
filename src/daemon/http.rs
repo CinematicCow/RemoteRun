@@ -39,6 +39,16 @@ fn host() -> std::net::Ipv4Addr {
         .unwrap_or(DEFAULT_HOST)
 }
 
+/// Whether the dashboard may start processes. Off by default (safe): starting
+/// arbitrary commands is the riskiest thing the unauthenticated dashboard can
+/// do, so it must be explicitly enabled with `RR_DASHBOARD_START=1`. The CLI
+/// can always start processes over the unix socket.
+fn dashboard_start_enabled() -> bool {
+    std::env::var("RR_DASHBOARD_START")
+        .ok()
+        .is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"))
+}
+
 #[derive(RustEmbed)]
 #[folder = "dashboard/dist"]
 struct Assets;
@@ -85,7 +95,14 @@ fn to_http(resp: Response) -> HttpResponse {
 }
 
 async fn ps(State(core): State<Arc<Core>>) -> HttpResponse {
-    to_http(core.handle(Request::Ps).await)
+    match core.handle(Request::Ps).await {
+        Response::Processes { processes } => Json(json!({
+            "processes": processes,
+            "startEnabled": dashboard_start_enabled(),
+        }))
+        .into_response(),
+        other => to_http(other),
+    }
 }
 
 #[derive(Deserialize)]
@@ -96,6 +113,15 @@ struct StartBody {
 }
 
 async fn start(State(core): State<Arc<Core>>, Json(body): Json<StartBody>) -> HttpResponse {
+    if !dashboard_start_enabled() {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({
+                "error": "starting processes from the dashboard is disabled (set RR_DASHBOARD_START=1)"
+            })),
+        )
+            .into_response();
+    }
     let cwd = body.cwd.filter(|c| !c.trim().is_empty()).unwrap_or_else(|| {
         dirs::home_dir().map_or_else(|| "/".into(), |h| h.to_string_lossy().into_owned())
     });
