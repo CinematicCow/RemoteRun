@@ -1,0 +1,4 @@
+[alias]
+lint = ["clippy", "--all-targets", "--all-features"]
+fmt-check = ["fmt", "--all", "--", "--check"]
+test-all = ["test", "--all-targets", "--all-features"]

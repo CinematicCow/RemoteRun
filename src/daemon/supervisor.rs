@@ -74,6 +74,7 @@ impl Supervisor {
             stop_rx,
         ));
         procs.insert(name.to_string(), ProcHandle { stop_tx, task });
+        drop(procs);
         Ok(())
     }
 
@@ -189,7 +190,10 @@ async fn terminate(child: &mut Child) {
         return; // already reaped
     };
     signal_group(pid, Signal::SIGTERM);
-    if tokio::time::timeout(KILL_GRACE, child.wait()).await.is_err() {
+    if tokio::time::timeout(KILL_GRACE, child.wait())
+        .await
+        .is_err()
+    {
         signal_group(pid, Signal::SIGKILL);
         let _ = child.wait().await;
     }

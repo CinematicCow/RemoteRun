@@ -4,9 +4,8 @@ use time::macros::format_description;
 
 /// Fixed-width RFC 3339 (UTC, always 3 subsecond digits) so timestamps sort
 /// lexicographically and log lines can be split at the first space.
-const TS_FORMAT: &[BorrowedFormatItem<'_>] = format_description!(
-    "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z"
-);
+const TS_FORMAT: &[BorrowedFormatItem<'_>] =
+    format_description!("[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:3]Z");
 
 /// Current unix timestamp in seconds.
 pub fn now_ts() -> i64 {
@@ -15,7 +14,9 @@ pub fn now_ts() -> i64 {
 
 /// Current time as e.g. `2026-08-01T10:15:30.123Z`.
 pub fn now_rfc3339() -> String {
-    OffsetDateTime::now_utc().format(TS_FORMAT).unwrap_or_default()
+    OffsetDateTime::now_utc()
+        .format(TS_FORMAT)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

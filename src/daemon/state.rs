@@ -66,7 +66,7 @@ impl ProcEntry {
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct PersistedState {
     processes: Vec<ProcSpec>,
 }
@@ -115,6 +115,10 @@ impl Store {
     }
 
     /// Register a new process spec. Fails if the name is taken.
+    // The guard is held across `save_locked` on purpose: the on-disk snapshot
+    // must be the same map we just mutated, and serializing concurrent
+    // insert/remove calls through the lock prevents a lost update on disk.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn insert(&self, spec: ProcSpec) -> Result<(), String> {
         let mut entries = self.lock();
         if entries.contains_key(&spec.name) {
@@ -126,6 +130,8 @@ impl Store {
     }
 
     /// Remove a process. Fails if it is not currently stopped/crashed.
+    // See `insert` for why the lock intentionally spans the persistence write.
+    #[allow(clippy::significant_drop_tightening)]
     pub fn remove(&self, name: &str) -> Result<(), String> {
         let mut entries = self.lock();
         let entry = entries
@@ -135,7 +141,10 @@ impl Store {
             entry.status,
             ProcessStatus::Running | ProcessStatus::Backoff
         ) {
-            return Err(format!("process '{name}' is {}; stop it first", entry.status));
+            return Err(format!(
+                "process '{name}' is {}; stop it first",
+                entry.status
+            ));
         }
         entries.remove(name);
         self.save_locked(&entries)
