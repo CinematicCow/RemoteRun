@@ -50,7 +50,7 @@ pub fn run(req: &Request) -> Result<(), String> {
 }
 
 /// Connect to the daemon, spawning it (detached) first if needed.
-fn ensure_daemon() -> Result<UnixStream, String> {
+pub fn ensure_daemon() -> Result<UnixStream, String> {
     let sock = paths::socket_path();
     if let Ok(stream) = UnixStream::connect(&sock) {
         return Ok(stream);

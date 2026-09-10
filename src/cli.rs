@@ -20,6 +20,8 @@ pub struct Cli {
 pub enum Cmd {
     /// List managed processes.
     Ps,
+    /// Interactive terminal UI.
+    Tui,
     /// Stop a process (SIGTERM, then SIGKILL).
     Stop { name: String },
     /// Restart a process.
