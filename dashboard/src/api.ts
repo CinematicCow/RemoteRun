@@ -1,49 +1,51 @@
 import type { LogLine, ProcessInfo } from "./types";
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, init);
+type RpcResponse =
+  | { kind: "ok" }
+  | { kind: "error"; message: string }
+  | { kind: "processes"; processes: ProcessInfo[]; start_enabled: boolean }
+  | { kind: "process"; process: ProcessInfo }
+  | { kind: "log_history"; lines: LogLine[] };
+
+async function rpc(req: unknown): Promise<RpcResponse> {
+  const res = await fetch("/api/rpc", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(req),
+  });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(body.error ?? `${res.status} ${res.statusText}`);
   }
-  return body as T;
+  if (body.kind === "error") {
+    throw new Error(body.message);
+  }
+  return body as RpcResponse;
 }
 
 export const api = {
-  ps: () =>
-    request<{ processes: ProcessInfo[]; startEnabled: boolean }>("/api/ps"),
+  ps: async () => {
+    const res = await rpc({ cmd: "ps" });
+    if (res.kind !== "processes") throw new Error("unexpected response");
+    return { processes: res.processes, startEnabled: res.start_enabled };
+  },
 
   start: (name: string, command: string) =>
-    request<{ process: ProcessInfo }>("/api/start", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name, command }),
-    }),
+    rpc({ cmd: "start", name, command, cwd: "" }),
 
-  stop: (name: string) =>
-    request<{ process: ProcessInfo }>(
-      `/api/processes/${encodeURIComponent(name)}/stop`,
-      { method: "POST" },
-    ),
+  stop: (name: string) => rpc({ cmd: "stop", name }),
 
-  restart: (name: string) =>
-    request<{ process: ProcessInfo }>(
-      `/api/processes/${encodeURIComponent(name)}/restart`,
-      { method: "POST" },
-    ),
+  restart: (name: string) => rpc({ cmd: "restart", name }),
 
-  remove: (name: string) =>
-    request<{ ok: boolean }>(`/api/processes/${encodeURIComponent(name)}`, {
-      method: "DELETE",
-    }),
+  remove: (name: string) => rpc({ cmd: "remove", name }),
 
-  history: (name: string, lines = 200) =>
-    request<{ lines: LogLine[] }>(
-      `/api/logs/${encodeURIComponent(name)}?lines=${lines}`,
-    ),
+  history: async (name: string, lines = 200) => {
+    const res = await rpc({ cmd: "logs", name, lines, follow: false });
+    if (res.kind !== "log_history") throw new Error("unexpected response");
+    return { lines: res.lines };
+  },
 
-  streamUrl: (name: string) =>
-    `/api/logs/${encodeURIComponent(name)}/stream`,
+  streamUrl: (name: string) => `/api/logs/${encodeURIComponent(name)}/stream`,
 };
 
 export function formatUptime(secs: number): string {

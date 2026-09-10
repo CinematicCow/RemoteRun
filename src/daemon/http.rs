@@ -1,16 +1,15 @@
-//! HTTP API for the dashboard: REST endpoints mirroring the RPC, an SSE
-//! stream for live logs, and the embedded dashboard static files.
+//! HTTP API for the dashboard: a JSON-RPC endpoint mirroring the unix socket
+//! protocol, an SSE stream for live logs, and the embedded dashboard assets.
 
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::{StatusCode, Uri, header};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response as HttpResponse};
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post};
 use rust_embed::RustEmbed;
-use serde::Deserialize;
 use serde_json::json;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
@@ -39,16 +38,6 @@ fn host() -> std::net::Ipv4Addr {
         .unwrap_or(DEFAULT_HOST)
 }
 
-/// Whether the dashboard may start processes. Off by default (safe): starting
-/// arbitrary commands is the riskiest thing the unauthenticated dashboard can
-/// do, so it must be explicitly enabled with `RR_DASHBOARD_START=1`. The CLI
-/// can always start processes over the unix socket.
-fn dashboard_start_enabled() -> bool {
-    std::env::var("RR_DASHBOARD_START")
-        .ok()
-        .is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"))
-}
-
 #[derive(RustEmbed)]
 #[folder = "dashboard/dist"]
 struct Assets;
@@ -62,12 +51,7 @@ pub async fn bind() -> std::io::Result<tokio::net::TcpListener> {
 
 pub async fn serve(core: Arc<Core>, listener: tokio::net::TcpListener) -> std::io::Result<()> {
     let app = axum::Router::new()
-        .route("/api/ps", get(ps))
-        .route("/api/start", post(start))
-        .route("/api/processes/{name}/stop", post(stop))
-        .route("/api/processes/{name}/restart", post(restart))
-        .route("/api/processes/{name}", delete(remove))
-        .route("/api/logs/{name}", get(logs_history))
+        .route("/api/rpc", post(rpc))
         .route("/api/logs/{name}/stream", get(logs_stream))
         .fallback(static_asset)
         .with_state(core);
@@ -76,44 +60,11 @@ pub async fn serve(core: Arc<Core>, listener: tokio::net::TcpListener) -> std::i
     axum::serve(listener, app).await
 }
 
-fn to_http(resp: Response) -> HttpResponse {
-    match resp {
-        Response::Ok | Response::Pong => Json(json!({ "ok": true })).into_response(),
-        Response::Error { message } => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(json!({ "error": message })),
-        )
-            .into_response(),
-        Response::Process { process } => Json(json!({ "process": process })).into_response(),
-        Response::Processes { processes } => {
-            Json(json!({ "processes": processes })).into_response()
-        }
-        Response::LogLine { .. } | Response::LogHistoryEnd => {
-            (StatusCode::INTERNAL_SERVER_ERROR, "unexpected response").into_response()
-        }
-    }
-}
-
-async fn ps(State(core): State<Arc<Core>>) -> HttpResponse {
-    match core.handle(Request::Ps).await {
-        Response::Processes { processes } => Json(json!({
-            "processes": processes,
-            "startEnabled": dashboard_start_enabled(),
-        }))
-        .into_response(),
-        other => to_http(other),
-    }
-}
-
-#[derive(Deserialize)]
-struct StartBody {
-    name: String,
-    command: String,
-    cwd: Option<String>,
-}
-
-async fn start(State(core): State<Arc<Core>>, Json(body): Json<StartBody>) -> HttpResponse {
-    if !dashboard_start_enabled() {
+/// Single entry point mirroring the unix socket protocol: the body is a
+/// `Request`, the reply a `Response`. Transport-level failures use a non-2xx
+/// status with an `error` field; RPC-level errors ride inside the `Response`.
+async fn rpc(State(core): State<Arc<Core>>, Json(req): Json<Request>) -> HttpResponse {
+    if matches!(&req, Request::Start { .. }) && !core.dashboard_start {
         return (
             StatusCode::FORBIDDEN,
             Json(json!({
@@ -122,54 +73,22 @@ async fn start(State(core): State<Arc<Core>>, Json(body): Json<StartBody>) -> Ht
         )
             .into_response();
     }
-    let cwd = body.cwd.filter(|c| !c.trim().is_empty()).unwrap_or_else(|| {
-        dirs::home_dir().map_or_else(|| "/".into(), |h| h.to_string_lossy().into_owned())
-    });
-    to_http(
-        core.handle(Request::Start {
-            name: body.name,
-            command: body.command,
-            cwd,
-        })
-        .await,
-    )
-}
-
-async fn stop(State(core): State<Arc<Core>>, Path(name): Path<String>) -> HttpResponse {
-    to_http(core.handle(Request::Stop { name }).await)
-}
-
-async fn restart(State(core): State<Arc<Core>>, Path(name): Path<String>) -> HttpResponse {
-    to_http(core.handle(Request::Restart { name }).await)
-}
-
-async fn remove(State(core): State<Arc<Core>>, Path(name): Path<String>) -> HttpResponse {
-    to_http(core.handle(Request::Remove { name }).await)
-}
-
-#[derive(Deserialize)]
-struct HistoryQuery {
-    #[serde(default = "default_lines")]
-    lines: usize,
-}
-
-const fn default_lines() -> usize {
-    100
-}
-
-async fn logs_history(
-    State(core): State<Arc<Core>>,
-    Path(name): Path<String>,
-    Query(q): Query<HistoryQuery>,
-) -> HttpResponse {
-    if !core.store.contains(&name) {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(json!({ "error": format!("no such process: {name}") })),
-        )
-            .into_response();
-    }
-    Json(json!({ "lines": core.logs.history(&name, q.lines) })).into_response()
+    let resp = match req {
+        Request::Logs { name, lines, .. } => {
+            if !core.store.contains(&name) {
+                return (
+                    StatusCode::NOT_FOUND,
+                    Json(json!({ "error": format!("no such process: {name}") })),
+                )
+                    .into_response();
+            }
+            Response::LogHistory {
+                lines: core.logs.history(&name, lines),
+            }
+        }
+        other => core.handle(other).await,
+    };
+    Json(resp).into_response()
 }
 
 async fn logs_stream(
@@ -207,11 +126,7 @@ async fn static_asset(uri: Uri) -> HttpResponse {
                 std::borrow::Cow::Borrowed(b) => axum::body::Bytes::from_static(b),
                 std::borrow::Cow::Owned(v) => axum::body::Bytes::from(v),
             };
-            (
-                [(header::CONTENT_TYPE, mime.as_ref().to_string())],
-                body,
-            )
-                .into_response()
+            ([(header::CONTENT_TYPE, mime.as_ref().to_string())], body).into_response()
         }
         None => (StatusCode::NOT_FOUND, "dashboard not built").into_response(),
     }

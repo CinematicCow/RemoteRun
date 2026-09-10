@@ -2,10 +2,9 @@
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
-    Ping,
     Start {
         name: String,
         command: String,
@@ -29,15 +28,29 @@ pub enum Request {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Response {
     Ok,
-    Pong,
-    Error { message: String },
-    Processes { processes: Vec<ProcessInfo> },
-    Process { process: ProcessInfo },
-    LogLine { line: LogLine },
+    Error {
+        message: String,
+    },
+    Processes {
+        processes: Vec<ProcessInfo>,
+        /// Whether the HTTP dashboard may start processes (`RR_DASHBOARD_START`).
+        start_enabled: bool,
+    },
+    Process {
+        process: ProcessInfo,
+    },
+    /// Log history, returned when `Request::Logs` is sent over HTTP (the unix
+    /// socket instead streams `LogLine` + `LogHistoryEnd`).
+    LogHistory {
+        lines: Vec<LogLine>,
+    },
+    LogLine {
+        line: LogLine,
+    },
     /// Marks the end of log history; live lines follow after this.
     LogHistoryEnd,
 }
@@ -64,7 +77,7 @@ impl std::fmt::Display for ProcessStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ProcessInfo {
     pub name: String,
     pub command: String,
@@ -79,7 +92,7 @@ pub struct ProcessInfo {
     pub created_at: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LogStream {
     Stdout,

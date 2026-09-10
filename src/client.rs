@@ -30,10 +30,14 @@ pub fn run(req: &Request) -> Result<(), String> {
             serde_json::from_str(&resp_line).map_err(|e| format!("bad response: {e}"))?;
         match resp {
             Response::Ok => println!("ok"),
-            Response::Pong => println!("daemon is up"),
             Response::Error { message } => return Err(message),
             Response::Process { process } => print_process(&process),
-            Response::Processes { processes } => print_table(&processes),
+            Response::Processes { processes, .. } => print_table(&processes),
+            Response::LogHistory { lines } => {
+                for line in &lines {
+                    print_log_line(line);
+                }
+            }
             Response::LogLine { line } => print_log_line(&line),
             Response::LogHistoryEnd => {
                 if !follow_logs {
@@ -81,10 +85,7 @@ fn ensure_daemon() -> Result<UnixStream, String> {
             return Err(format!("daemon failed to start:{}", daemon_log_tail(3)));
         }
     }
-    Err(format!(
-        "daemon did not come up:{}",
-        daemon_log_tail(3)
-    ))
+    Err(format!("daemon did not come up:{}", daemon_log_tail(3)))
 }
 
 /// Last `n` lines of the daemon log, prefixed with newlines for display.
@@ -122,7 +123,8 @@ fn print_table(processes: &[ProcessInfo]) {
             p.name,
             p.status.to_string(),
             or_dash(p.pid),
-            p.uptime_secs.map_or_else(|| "-".to_owned(), format_duration),
+            p.uptime_secs
+                .map_or_else(|| "-".to_owned(), format_duration),
             p.restarts,
             or_dash(p.last_exit_code),
             p.command,
