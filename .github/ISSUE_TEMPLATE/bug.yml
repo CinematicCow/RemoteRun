@@ -1,0 +1,68 @@
+name: Bug report
+description: Report a fault in rr
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        First, search open issues and closed issues. Do not file a copy.
+  - type: textarea
+    id: version
+    attributes:
+      label: Version
+      description: Give the output of `rr --version`. Or give the commit hash.
+      placeholder: ex. rr 0.1.0 (commit 26bdd74)
+    validations:
+      required: true
+  - type: textarea
+    id: platform
+    attributes:
+      label: Platform
+      description: Give the output of `uname -a`. On Windows, give the OS version.
+      placeholder: ex. Linux dev 6.9.0 x86_64 GNU/Linux
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the fault in short words.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: I tried this
+      description: List the steps to cause the fault. Give commands and config.
+      placeholder: |
+        ```
+        rr start myapp
+        ```
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: I expected this
+      description: Describe what you expected to see.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: But I saw this
+      description: Show the real output. Use code fences. For large logs, give a link and a short part.
+      placeholder: |
+        ```
+        error: ...
+        ```
+    validations:
+      required: true
+  - type: checkboxes
+    id: agent-triage
+    attributes:
+      label: Triage
+      description: For maintainers. Leave clear when you file the report.
+      options:
+        - label: Root cause found (give link)
+        - label: Regression (it worked before)
