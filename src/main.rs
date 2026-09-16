@@ -21,6 +21,7 @@ mod client;
 mod daemon;
 mod paths;
 mod protocol;
+mod tui;
 mod util;
 
 use clap::Parser;
@@ -39,6 +40,7 @@ fn main() {
             return;
         }
         Some(Cmd::Ps) => client::run(&Request::Ps),
+        Some(Cmd::Tui) => tui::run(),
         Some(Cmd::Stop { name }) => client::run(&Request::Stop { name }),
         Some(Cmd::Restart { name }) => client::run(&Request::Restart { name }),
         Some(Cmd::Rm { name }) => client::run(&Request::Remove { name }),
