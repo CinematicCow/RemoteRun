@@ -43,22 +43,20 @@ pub enum Response {
     Process {
         process: ProcessInfo,
     },
-    /// Log history, returned when `Request::Logs` is sent over HTTP (the unix
-    /// socket instead streams `LogLine` + `LogHistoryEnd`).
+    /// Log history; live `LogLine`s follow when the request asked to follow.
     LogHistory {
         lines: Vec<LogLine>,
     },
     LogLine {
         line: LogLine,
     },
-    /// Marks the end of log history; live lines follow after this.
-    LogHistoryEnd,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProcessStatus {
     Running,
+    #[default]
     Stopped,
     Crashed,
     /// Crashed and waiting out the restart backoff delay.

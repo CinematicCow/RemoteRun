@@ -74,18 +74,12 @@ async fn rpc(State(core): State<Arc<Core>>, Json(req): Json<Request>) -> HttpRes
             .into_response();
     }
     let resp = match req {
-        Request::Logs { name, lines, .. } => {
-            if !core.store.contains(&name) {
-                return (
-                    StatusCode::NOT_FOUND,
-                    Json(json!({ "error": format!("no such process: {name}") })),
-                )
-                    .into_response();
+        Request::Logs { name, lines, .. } => match core.log_history(&name, lines) {
+            Ok(lines) => Response::LogHistory { lines },
+            Err(message) => {
+                return (StatusCode::NOT_FOUND, Json(json!({ "error": message }))).into_response();
             }
-            Response::LogHistory {
-                lines: core.logs.history(&name, lines),
-            }
-        }
+        },
         other => core.handle(other).await,
     };
     Json(resp).into_response()

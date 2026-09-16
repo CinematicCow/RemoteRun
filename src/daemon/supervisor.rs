@@ -118,15 +118,15 @@ async fn supervise(
         };
 
         let pid = child.id();
-        if !first_run {
-            store.update(&name, |p| p.restarts += 1);
-        }
-        first_run = false;
         store.update(&name, |p| {
+            if !first_run {
+                p.restarts += 1;
+            }
             p.status = ProcessStatus::Running;
             p.pid = pid;
             p.started_at = Some(now_ts());
         });
+        first_run = false;
 
         if let Some(out) = child.stdout.take() {
             logs.pipe(name.clone(), LogStream::Stdout, out);
@@ -220,13 +220,8 @@ mod tests {
         (dir, store, logs, sup)
     }
 
-    fn spec(name: &str, command: &str) -> super::super::state::ProcSpec {
-        super::super::state::ProcSpec {
-            name: name.into(),
-            command: command.into(),
-            cwd: "/tmp".into(),
-            created_at: now_ts(),
-        }
+    fn spec(name: &str, command: &str) -> super::super::state::ProcEntry {
+        super::super::state::ProcEntry::new(name.into(), command.into(), "/tmp".into(), now_ts())
     }
 
     #[test]

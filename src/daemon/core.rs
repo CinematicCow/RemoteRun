@@ -3,13 +3,14 @@
 //! call into this.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::logs::LogManager;
-use super::state::{ProcSpec, Store};
+use super::state::{ProcEntry, Store};
 use super::supervisor::Supervisor;
-use crate::protocol::{Request, Response};
+use crate::paths;
+use crate::protocol::{LogLine, ProcessStatus, Request, Response};
 use crate::util::now_ts;
-use crate::{paths, protocol::ProcessStatus};
 
 pub struct Core {
     pub store: Arc<Store>,
@@ -32,6 +33,12 @@ pub fn valid_name(name: &str) -> bool {
         && name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+fn error(message: impl Into<String>) -> Response {
+    Response::Error {
+        message: message.into(),
+    }
 }
 
 impl Core {
@@ -58,99 +65,95 @@ impl Core {
             },
             Request::Stop { name } => match self.supervisor.stop(&name).await {
                 Ok(()) => self.process_response(&name),
-                Err(message) => Response::Error { message },
+                Err(message) => error(message),
             },
             Request::Restart { name } => self.restart(name).await,
-            Request::Remove { name } => {
-                if self.supervisor.is_active(&name) {
-                    return Response::Error {
-                        message: format!("process '{name}' is running; stop it first"),
-                    };
-                }
-                match self.store.remove(&name) {
-                    Ok(()) => {
-                        self.logs.remove(&name);
-                        Response::Ok
-                    }
-                    Err(message) => Response::Error { message },
-                }
+            Request::Remove { name } => self.remove(&name),
+            Request::Logs { .. } => error("logs must be requested over a streaming transport"),
+        }
+    }
+
+    fn remove(&self, name: &str) -> Response {
+        if self.supervisor.is_active(name) {
+            return error(format!("process '{name}' is running; stop it first"));
+        }
+        match self.store.remove(name) {
+            Ok(()) => {
+                self.logs.remove(name);
+                Response::Ok
             }
-            Request::Logs { .. } => Response::Error {
-                message: "logs must be requested over a streaming transport".into(),
-            },
+            Err(message) => error(message),
         }
     }
 
     async fn start(&self, name: String, command: String, cwd: String) -> Response {
         if !valid_name(&name) {
-            return Response::Error {
-                message: "invalid name: use letters, digits, '-', '_', '.' (max 64 chars)".into(),
-            };
+            return error("invalid name: use letters, digits, '-', '_', '.' (max 64 chars)");
         }
         if command.trim().is_empty() {
-            return Response::Error {
-                message: "command is empty".into(),
-            };
+            return error("command is empty");
+        }
+        if self.store.contains(&name) {
+            return error(format!(
+                "process '{name}' already exists (try `rr restart {name}`)"
+            ));
         }
         let cwd = if cwd.trim().is_empty() {
             dirs::home_dir().map_or_else(|| "/".into(), |h| h.to_string_lossy().into_owned())
         } else {
             cwd
         };
-        if self.store.contains(&name) {
-            return Response::Error {
-                message: format!("process '{name}' already exists (try `rr restart {name}`)"),
-            };
-        }
-        if let Err(message) = self.store.insert(ProcSpec {
-            name: name.clone(),
-            command,
-            cwd,
-            created_at: now_ts(),
-        }) {
-            return Response::Error { message };
+        if let Err(message) =
+            self.store
+                .insert(ProcEntry::new(name.clone(), command, cwd, now_ts()))
+        {
+            return error(message);
         }
         if let Err(message) = self.supervisor.start(&name) {
-            return Response::Error { message };
+            return error(message);
         }
-        self.await_pid(&name).await;
-        self.process_response(&name)
+        self.settle(&name).await
     }
 
     async fn restart(&self, name: String) -> Response {
         if !self.store.contains(&name) {
-            return Response::Error {
-                message: format!("no such process: {name}"),
-            };
+            return error(format!("no such process: {name}"));
         }
         if self.supervisor.is_active(&name) {
             if let Err(message) = self.supervisor.stop(&name).await {
-                return Response::Error { message };
+                return error(message);
             }
         }
         if let Err(message) = self.supervisor.start(&name) {
-            return Response::Error { message };
+            return error(message);
         }
-        self.await_pid(&name).await;
-        self.process_response(&name)
+        self.settle(&name).await
     }
 
-    /// The supervisor task spawns the child asynchronously; give it a moment
-    /// so start/restart responses can include the fresh pid.
-    async fn await_pid(&self, name: &str) {
+    /// Wait for the supervisor's async spawn, then report the process so
+    /// start/restart responses carry the fresh pid.
+    async fn settle(&self, name: &str) -> Response {
         for _ in 0..20 {
             match self.store.info(name) {
                 Some(info) if info.status == ProcessStatus::Running && info.pid.is_some() => break,
-                _ => tokio::time::sleep(std::time::Duration::from_millis(25)).await,
+                _ => tokio::time::sleep(Duration::from_millis(25)).await,
             }
         }
+        self.process_response(name)
+    }
+
+    /// Log history for an existing process, or why it can't be read. Shared by
+    /// the unix socket and HTTP transports, which stream the result differently.
+    pub fn log_history(&self, name: &str, lines: usize) -> Result<Vec<LogLine>, String> {
+        if !self.store.contains(name) {
+            return Err(format!("no such process: {name}"));
+        }
+        Ok(self.logs.history(name, lines))
     }
 
     fn process_response(&self, name: &str) -> Response {
         self.store.info(name).map_or_else(
-            || Response::Error {
-                message: format!("no such process: {name}"),
-            },
+            || error(format!("no such process: {name}")),
             |process| Response::Process { process },
         )
     }
