@@ -53,6 +53,7 @@ fn main() {
             lines,
             follow: !no_follow,
         }),
+        None if cli.run.is_empty() && cli.name.is_none() => tui::run(),
         None => start_command(cli),
     };
 
