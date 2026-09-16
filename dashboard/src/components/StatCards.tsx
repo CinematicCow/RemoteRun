@@ -1,22 +1,6 @@
 import { LayerCard, Text } from "@cloudflare/kumo";
+import { STATUS_ORDER, statusDot, statusLabel, type StatusFilter } from "../status";
 import type { ProcessStatus } from "../types";
-
-export type StatusFilter = "all" | ProcessStatus;
-
-interface StatDef {
-  status: ProcessStatus;
-  label: string;
-  dot: string;
-}
-
-/* Color lives in the status dot only — counts stay neutral so the cards
-   read as data, not as four competing alerts. */
-const STATS: StatDef[] = [
-  { status: "running", label: "Running", dot: "bg-kumo-success" },
-  { status: "backoff", label: "Backoff", dot: "bg-kumo-warning" },
-  { status: "crashed", label: "Crashed", dot: "bg-kumo-danger" },
-  { status: "stopped", label: "Stopped", dot: "bg-kumo-fill" },
-];
 
 /* Static class literals so Tailwind generates them. */
 const STAGGER = [
@@ -37,15 +21,15 @@ export function StatCards({
 }) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-      {STATS.map((s, i) => {
-        const count = counts[s.status];
-        const selected = active === s.status;
+      {STATUS_ORDER.map((status, i) => {
+        const count = counts[status];
+        const selected = active === status;
         return (
           <button
-            key={s.status}
+            key={status}
             type="button"
             aria-pressed={selected}
-            onClick={() => onSelect(s.status)}
+            onClick={() => onSelect(status)}
             className={`rr-rise rounded-xl text-left focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-none ${STAGGER[i]}`}
           >
             <LayerCard
@@ -56,9 +40,11 @@ export function StatCards({
               {/* Mobile: one quiet line per chip. Desktop: label over count. */}
               <div className="flex items-center gap-2 sm:grid sm:gap-1">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${s.dot}`} />
+                  <span
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot[status]}`}
+                  />
                   <Text size="sm" variant="secondary" truncate>
-                    {s.label}
+                    {statusLabel[status]}
                   </Text>
                 </div>
                 <span

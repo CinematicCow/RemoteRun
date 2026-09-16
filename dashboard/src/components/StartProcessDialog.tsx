@@ -2,10 +2,7 @@ import { useState } from "react";
 import { Banner, Button, Dialog, Input } from "@cloudflare/kumo";
 import { WarningCircleIcon, XIcon } from "@phosphor-icons/react";
 import { api } from "../api";
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
+import { errorMessage } from "../errors";
 
 export function StartProcessDialog({
   open,

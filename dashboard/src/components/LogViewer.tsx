@@ -11,64 +11,18 @@ import {
   XIcon,
 } from "@phosphor-icons/react";
 import { api } from "../api";
+import {
+  classify,
+  displayText,
+  formatTs,
+  LEVEL_TAG,
+  type LevelFilterValue,
+} from "../logLevel";
 import { CopyButton } from "./CopyButton";
+import { LevelFilter } from "./LevelFilter";
 import type { LogLine } from "../types";
 
 const MAX_LINES = 1000;
-
-type LogLevel = "debug" | "info" | "warn" | "error";
-
-const LEVEL_RE = /\[(TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|ERR|FATAL)\]/i;
-
-function logLevel(line: string): LogLevel | null {
-  const m = LEVEL_RE.exec(line);
-  if (!m) return null;
-  const t = m[1].toUpperCase();
-  if (t === "WARN" || t === "WARNING") return "warn";
-  if (t === "ERROR" || t === "ERR" || t === "FATAL") return "error";
-  if (t === "INFO") return "info";
-  return "debug"; // DEBUG, TRACE
-}
-
-/** Level for a line: explicit token wins; bare stderr output counts as
- *  error so the tag, the counts and the level filter always agree. */
-function classify(l: LogLine): LogLevel | null {
-  return logLevel(l.line) ?? (l.stream === "stderr" ? "error" : null);
-}
-
-/** Three-char gutter tag per level. The tag carries the level color so the
- *  message itself can stay neutral — a wall of red text is unreadable. */
-const LEVEL_TAG: Record<LogLevel, { label: string; tone: string }> = {
-  debug: { label: "dbg", tone: "text-kumo-subtle" },
-  info: { label: "inf", tone: "text-kumo-info" },
-  warn: { label: "wrn", tone: "text-kumo-warning" },
-  error: { label: "err", tone: "text-kumo-danger" },
-};
-
-/** Leading ISO-ish timestamp in the child's own output. Shown dimmed via the
- *  gutter instead of repeated at full strength inside the message. */
-const TS_PREFIX =
-  /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?\s+/;
-/** Leading level token, e.g. `[ERROR] ` or `WARN: ` — replaced by the tag. */
-const LEVEL_PREFIX = /^\[?(TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|ERR|FATAL)\]?:?\s+/i;
-
-/** Message with redundant leading timestamp/level tokens folded into the
- *  gutter columns. Copy still uses the raw line — nothing is lost. */
-function displayText(raw: string): string {
-  return raw.replace(TS_PREFIX, "").replace(LEVEL_PREFIX, "");
-}
-
-const timeFmt = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hour12: false,
-});
-
-function formatTs(ts: string): string {
-  const d = new Date(ts);
-  return Number.isNaN(d.getTime()) ? ts : timeFmt.format(d);
-}
 
 export function LogViewer({
   name,
@@ -84,7 +38,7 @@ export function LogViewer({
   const [live, setLive] = useState(false);
   const [paused, setPaused] = useState(false);
   const [filter, setFilter] = useState("");
-  const [level, setLevel] = useState<"all" | LogLevel>("all");
+  const [level, setLevel] = useState<LevelFilterValue>("all");
   const [pinned, setPinned] = useState(true);
   const [unseen, setUnseen] = useState(0);
 
@@ -165,7 +119,13 @@ export function LogViewer({
      so the numbers always match what selecting a segment would show. */
   const counts = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    const c = { all: 0, debug: 0, info: 0, warn: 0, error: 0 };
+    const c: Record<LevelFilterValue, number> = {
+      all: 0,
+      debug: 0,
+      info: 0,
+      warn: 0,
+      error: 0,
+    };
     for (const l of lines) {
       if (q && !l.line.toLowerCase().includes(q)) continue;
       c.all += 1;
@@ -174,8 +134,6 @@ export function LogViewer({
     }
     return c;
   }, [lines, filter]);
-
-
 
   const jumpToLatest = () => {
     if (visible.length > 0) {
@@ -266,94 +224,61 @@ export function LogViewer({
         </div>
       </div>
 
-      {/* One toolbar row: compact level segments + search + stream controls.
-          Segmented control keeps concentric radii (track 8px = segment 4px +
-          padding 4px) but hugs its content instead of filling a row. */}
+      {/* One toolbar row: compact level segments + search + stream controls. */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div
-          role="group"
-          aria-label="Filter by level"
-          className="flex shrink-0 items-center rounded-lg bg-kumo-recessed p-1 ring ring-kumo-hairline"
-        >
-          {(["all", "debug", "info", "warn", "error"] as const).map((l) => {
-            const active = level === l;
-            const count = l === "all" ? counts.all : counts[l];
-            return (
-              <button
-                key={l}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setLevel(l)}
-                className={`flex h-7 items-center rounded px-2.5 text-sm capitalize transition-transform active:scale-[0.96] focus-visible:ring-2 focus-visible:ring-kumo-brand focus-visible:outline-none ${
-                  active
-                    ? "bg-kumo-base font-medium text-kumo-default shadow-sm"
-                    : "text-kumo-subtle hover:text-kumo-default"
-                }`}
-              >
-                {l}
-                {l !== "all" && count > 0 && (
-                  <span
-                    className={`ml-1.5 text-xs tabular-nums ${
-                      active ? "text-kumo-subtle" : "text-kumo-subtle/60"
-                    }`}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <LevelFilter level={level} counts={counts} onChange={setLevel} />
 
         <InputGroup className="relative z-0 min-w-[200px] flex-1">
-        <InputGroup.Addon>
-          <MagnifyingGlassIcon size={16} />
-        </InputGroup.Addon>
-        <InputGroup.Input
-          aria-label="Filter logs"
-          placeholder="Filter output"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-        />
-        <InputGroup.Addon align="end">
-          <div className="flex items-center gap-0.5">
-            <CopyButton
-              size="xs"
-              getText={() => visible.map((l) => `${l.ts} ${l.line}`).join("\n")}
-              label="Copy logs"
-            />
-            <Tooltip
-              content={paused ? "Resume stream" : "Pause stream"}
-              render={
-                <Button
-                  variant="ghost"
-                  shape="square"
-                  size="xs"
-                  icon={
-                    paused ? <PlayIcon size={14} /> : <PauseIcon size={14} />
-                  }
-                  aria-label={paused ? "Resume stream" : "Pause stream"}
-                  onClick={togglePause}
-                />
-              }
-            />
-            <Tooltip
-              content="Clear output"
-              render={
-                <Button
-                  variant="ghost"
-                  shape="square"
-                  size="xs"
-                  icon={<BroomIcon size={14} />}
-                  aria-label="Clear output"
-                  onClick={() => {
-                    setLines([]);
-                    setUnseen(0);
-                    pendingRef.current = [];
-                  }}
-                />
-              }
-            />
+          <InputGroup.Addon>
+            <MagnifyingGlassIcon size={16} />
+          </InputGroup.Addon>
+          <InputGroup.Input
+            aria-label="Filter logs"
+            placeholder="Filter output"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+          />
+          <InputGroup.Addon align="end">
+            <div className="flex items-center gap-0.5">
+              <CopyButton
+                size="xs"
+                getText={() =>
+                  visible.map((l) => `${l.ts} ${l.line}`).join("\n")
+                }
+                label="Copy logs"
+              />
+              <Tooltip
+                content={paused ? "Resume stream" : "Pause stream"}
+                render={
+                  <Button
+                    variant="ghost"
+                    shape="square"
+                    size="xs"
+                    icon={
+                      paused ? <PlayIcon size={14} /> : <PauseIcon size={14} />
+                    }
+                    aria-label={paused ? "Resume stream" : "Pause stream"}
+                    onClick={togglePause}
+                  />
+                }
+              />
+              <Tooltip
+                content="Clear output"
+                render={
+                  <Button
+                    variant="ghost"
+                    shape="square"
+                    size="xs"
+                    icon={<BroomIcon size={14} />}
+                    aria-label="Clear output"
+                    onClick={() => {
+                      setLines([]);
+                      setUnseen(0);
+                      pendingRef.current = [];
+                    }}
+                  />
+                }
+              />
             </div>
           </InputGroup.Addon>
         </InputGroup>

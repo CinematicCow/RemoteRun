@@ -1,22 +1,11 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Suspense,
-  lazy,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  Badge,
   Banner,
   Button,
   DeleteResource,
-  Dialog,
   Empty,
   InputGroup,
   Loader,
-  Text,
   useKumoToastManager,
 } from "@cloudflare/kumo";
 import {
@@ -26,35 +15,18 @@ import {
   WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { Drawer } from "vaul";
 import { api } from "./api";
 import type { ProcessInfo, ProcessStatus } from "./types";
+import { errorMessage } from "./errors";
+import type { StatusFilter } from "./status";
 import { useColorMode } from "./useColorMode";
-import { useIsMobile } from "./useMediaQuery";
-import { ThemeToggle } from "./components/ThemeToggle";
-import { StatCards, type StatusFilter } from "./components/StatCards";
+import { AppHeader } from "./components/AppHeader";
+import { LogPanel } from "./components/LogPanel";
+import { StatCards } from "./components/StatCards";
 import { ProcessTable } from "./components/ProcessTable";
 import { StartProcessDialog } from "./components/StartProcessDialog";
 
-/* Log viewing pulls in react-virtuoso; keep it out of the initial bundle —
-   it only loads the first time a log panel opens. */
-const LogViewer = lazy(() =>
-  import("./components/LogViewer").then((m) => ({ default: m.LogViewer })),
-);
-
-function LogViewerFallback() {
-  return (
-    <div className="flex h-[52vh] items-center justify-center">
-      <Loader className="text-kumo-subtle" />
-    </div>
-  );
-}
-
 const POLL_MS = 2000;
-
-function errorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
 
 export default function App() {
   const { isDark, toggle } = useColorMode();
@@ -76,7 +48,6 @@ export default function App() {
   /* Keep the last-opened process mounted through the close animation. */
   const shownLogs = useRef<string | null>(null);
   if (selectedLogs) shownLogs.current = selectedLogs;
-  const isMobile = useIsMobile();
   const [pendingRemove, setPendingRemove] = useState<ProcessInfo | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | undefined>();
@@ -188,65 +159,18 @@ export default function App() {
   }, [processes, query, statusFilter]);
 
   const list = processes ?? [];
-  const daemonHost = window.location.host;
 
   return (
     <div className="min-h-screen bg-kumo-canvas">
-      <header className="sticky top-0 z-10 border-b border-kumo-line bg-kumo-canvas/85 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center gap-2.5 px-4 py-2.5 sm:gap-3 sm:px-6">
-          <img src="/logo.png" alt="" className="h-8 w-8 rounded-md" />
-          <div className="grid min-w-0">
-            <Text as="h1" variant="heading3">
-              Remote Run
-            </Text>
-            <span className="hidden font-mono text-xs text-kumo-subtle sm:block">
-              {daemonHost}
-            </span>
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden sm:inline-flex">
-              {daemonError ? (
-                <Badge variant="error" appearance="dot">
-                  Unreachable
-                </Badge>
-              ) : processes === null ? (
-                <Badge variant="neutral" appearance="dot">
-                  Connecting
-                </Badge>
-              ) : (
-                <Badge variant="success" appearance="dot">
-                  Connected
-                </Badge>
-              )}
-            </span>
-            <ThemeToggle isDark={isDark} onToggle={toggle} />
-            {startEnabled && (
-              <>
-                <span className="hidden h-4 w-px bg-kumo-line sm:block" />
-                <span className="hidden sm:block">
-                  <Button
-                    variant="primary"
-                    icon={<PlusIcon size={16} />}
-                    onClick={() => setStartOpen(true)}
-                  >
-                    Start process
-                  </Button>
-                </span>
-                <span className="sm:hidden">
-                  <Button
-                    variant="primary"
-                    shape="square"
-                    icon={<PlusIcon size={16} />}
-                    aria-label="Start process"
-                    onClick={() => setStartOpen(true)}
-                  />
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
+      <AppHeader
+        isDark={isDark}
+        onToggleTheme={toggle}
+        daemonError={daemonError}
+        connecting={processes === null}
+        startEnabled={startEnabled}
+        daemonHost={window.location.host}
+        onStart={() => setStartOpen(true)}
+      />
 
       <main className="mx-auto flex max-w-6xl flex-col gap-5 px-4 py-6 sm:px-6">
         {daemonError && (
@@ -261,9 +185,7 @@ export default function App() {
         <StatCards
           counts={counts}
           active={statusFilter}
-          onSelect={(s) =>
-            setStatusFilter((cur) => (cur === s ? "all" : s))
-          }
+          onSelect={(s) => setStatusFilter((cur) => (cur === s ? "all" : s))}
         />
 
         <div className="flex flex-wrap items-center gap-3">
@@ -379,46 +301,11 @@ export default function App() {
         }}
       />
 
-      {isMobile ? (
-        <Drawer.Root
-          open={selectedLogs !== null}
-          onOpenChange={(open) => !open && setSelectedLogs(null)}
-        >
-          <Drawer.Portal>
-            <Drawer.Overlay className="fixed inset-0 z-40 bg-black/60" />
-            <Drawer.Content
-              aria-describedby={undefined}
-              className="fixed inset-x-0 bottom-0 z-50 flex h-[94dvh] flex-col rounded-t-2xl bg-kumo-base shadow-2xl ring ring-kumo-line outline-none"
-            >
-              <Drawer.Handle className="mx-auto mt-2.5 mb-1 h-1 w-9 shrink-0 rounded-full bg-kumo-fill" />
-              <div className="flex min-h-0 flex-1 flex-col px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
-                {shownLogs.current && (
-                  <Suspense fallback={<LogViewerFallback />}>
-                    <LogViewer
-                      name={shownLogs.current}
-                      chrome="drawer"
-                      onClose={() => setSelectedLogs(null)}
-                    />
-                  </Suspense>
-                )}
-              </div>
-            </Drawer.Content>
-          </Drawer.Portal>
-        </Drawer.Root>
-      ) : (
-        <Dialog.Root
-          open={selectedLogs !== null}
-          onOpenChange={(open) => !open && setSelectedLogs(null)}
-        >
-          <Dialog size="xl" className="p-6">
-            {shownLogs.current && (
-              <Suspense fallback={<LogViewerFallback />}>
-                <LogViewer name={shownLogs.current} />
-              </Suspense>
-            )}
-          </Dialog>
-        </Dialog.Root>
-      )}
+      <LogPanel
+        name={shownLogs.current}
+        open={selectedLogs !== null}
+        onClose={() => setSelectedLogs(null)}
+      />
 
       <DeleteResource
         open={pendingRemove !== null}

@@ -1,140 +1,16 @@
-import { Fragment, useState } from "react";
-import {
-  Badge,
-  Button,
-  ClipboardText,
-  DropdownMenu,
-  Table,
-} from "@cloudflare/kumo";
-import {
-  ArrowClockwiseIcon,
-  CaretRightIcon,
-  DotsThreeVerticalIcon,
-  StopIcon,
-  TerminalWindowIcon,
-  TrashIcon,
-} from "@phosphor-icons/react";
-import { formatAgo, formatUptime } from "../api";
-import { useNow } from "../useNow";
-import type { ProcessInfo, ProcessStatus } from "../types";
-
-const statusBadge: Record<
-  ProcessStatus,
-  "success" | "neutral" | "error" | "warning"
-> = {
-  running: "success",
-  stopped: "neutral",
-  crashed: "error",
-  backoff: "warning",
-};
-
-export interface ProcessActions {
-  onLogs: (name: string) => void;
-  onRestart: (name: string) => void;
-  onStop: (name: string) => void;
-  onRemove: (p: ProcessInfo) => void;
-}
+import { Fragment, useState, type RefObject } from "react";
+import { Badge, Table } from "@cloudflare/kumo";
+import { CaretRightIcon } from "@phosphor-icons/react";
+import { formatAgo } from "../api";
+import { statusBadge } from "../status";
+import type { ProcessInfo } from "../types";
+import { ActionsMenu, type ProcessActions } from "./ProcessActions";
+import { LiveUptime, ProcessDetails } from "./ProcessDetails";
 
 interface Props extends ProcessActions {
   processes: ProcessInfo[];
   /** When the current process snapshot was fetched (for live uptime ticks). */
-  fetchedAtRef: React.RefObject<number>;
-}
-
-function displayUptime(p: ProcessInfo, fetchedAt: number, now: number): string {
-  if (p.uptime_secs == null) return "—";
-  const extra =
-    p.status === "running"
-      ? Math.max(0, Math.floor((now - fetchedAt) / 1000))
-      : 0;
-  return formatUptime(p.uptime_secs + extra);
-}
-
-/** The only piece of the page that re-renders every second. Keeping the
- *  clock in this leaf means uptime ticks without re-rendering the table. */
-function LiveUptime({
-  p,
-  fetchedAtRef,
-}: {
-  p: ProcessInfo;
-  fetchedAtRef: React.RefObject<number>;
-}) {
-  const now = useNow(1000);
-  return <>{displayUptime(p, fetchedAtRef.current, now)}</>;
-}
-
-function Meta({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: React.ReactNode;
-  mono?: boolean;
-}) {
-  return (
-    <div className="grid gap-1">
-      <span className="text-xs text-kumo-subtle">{label}</span>
-      <span
-        className={`text-sm text-kumo-default ${mono ? "font-mono break-all" : "tabular-nums"}`}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function ActionsMenu({
-  p,
-  size = "sm",
-  onLogs,
-  onRestart,
-  onStop,
-  onRemove,
-}: ProcessActions & { p: ProcessInfo; size?: "sm" | "base" }) {
-  const alive = p.status === "running" || p.status === "backoff";
-  return (
-    <DropdownMenu>
-      <DropdownMenu.Trigger
-        render={
-          <Button
-            variant="ghost"
-            shape="square"
-            size={size}
-            icon={<DotsThreeVerticalIcon size={16} />}
-            aria-label={`Actions for ${p.name}`}
-          />
-        }
-      />
-      <DropdownMenu.Content>
-        <DropdownMenu.Item
-          icon={TerminalWindowIcon}
-          onClick={() => onLogs(p.name)}
-        >
-          View logs
-        </DropdownMenu.Item>
-        <DropdownMenu.Item
-          icon={ArrowClockwiseIcon}
-          onClick={() => onRestart(p.name)}
-        >
-          Restart
-        </DropdownMenu.Item>
-        {alive ? (
-          <DropdownMenu.Item icon={StopIcon} onClick={() => onStop(p.name)}>
-            Stop
-          </DropdownMenu.Item>
-        ) : (
-          <DropdownMenu.Item
-            variant="danger"
-            icon={TrashIcon}
-            onClick={() => onRemove(p)}
-          >
-            Remove
-          </DropdownMenu.Item>
-        )}
-      </DropdownMenu.Content>
-    </DropdownMenu>
-  );
+  fetchedAtRef: RefObject<number>;
 }
 
 function Caret({ open }: { open: boolean }) {
@@ -147,54 +23,6 @@ function Caret({ open }: { open: boolean }) {
         }`}
       />
     </span>
-  );
-}
-
-/** Expanded detail block, shared by the desktop table and mobile cards. */
-function ProcessDetails({
-  p,
-  fetchedAtRef,
-  onLogs,
-}: {
-  p: ProcessInfo;
-  fetchedAtRef: React.RefObject<number>;
-  onLogs: (name: string) => void;
-}) {
-  return (
-    <div className="grid min-w-0 gap-4">
-      <div className="grid min-w-0 gap-1.5">
-        <span className="text-xs text-kumo-subtle">Command</span>
-        <ClipboardText text={p.command} className="font-mono text-sm" />
-      </div>
-      <div className="flex flex-wrap gap-x-10 gap-y-3">
-        <Meta label="Pid" value={p.pid != null ? String(p.pid) : "—"} />
-        <Meta
-          label="Uptime"
-          value={<LiveUptime p={p} fetchedAtRef={fetchedAtRef} />}
-        />
-        <Meta label="Restarts" value={String(p.restarts)} />
-        <Meta
-          label="Last crash"
-          value={p.last_crash_at != null ? formatAgo(p.last_crash_at) : "—"}
-        />
-        <Meta
-          label="Last exit code"
-          value={p.last_exit_code != null ? String(p.last_exit_code) : "—"}
-        />
-        <Meta label="Working directory" value={p.cwd} mono />
-        <Meta label="Created" value={formatAgo(p.created_at)} />
-      </div>
-      <div>
-        <Button
-          variant="secondary"
-          size="sm"
-          icon={<TerminalWindowIcon size={16} />}
-          onClick={() => onLogs(p.name)}
-        >
-          View logs
-        </Button>
-      </div>
-    </div>
   );
 }
 
