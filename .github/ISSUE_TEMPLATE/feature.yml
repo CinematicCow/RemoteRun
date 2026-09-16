@@ -1,0 +1,48 @@
+name: Feature request
+description: Ask for a new function in rr
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        First, search open issues and closed issues. Do not file a copy.
+        The owner must approve the scope before work starts.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: Describe the result you want. Tell who needs it and why.
+    validations:
+      required: true
+  - type: textarea
+    id: usage
+    attributes:
+      label: Use
+      description: Show how you will use it. Give commands and examples.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List the conditions for done. Use one line for each condition.
+      value: |
+        - [ ]
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Limits
+      description: List the limits. List what is not in scope.
+    validations:
+      required: false
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: Test plan
+      description: Tell how you will test it. List the commands.
+    validations:
+      required: true
