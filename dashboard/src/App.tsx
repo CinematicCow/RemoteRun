@@ -15,9 +15,8 @@ import {
   WarningCircleIcon,
   XIcon,
 } from "@phosphor-icons/react";
-import { api } from "./api";
+import { api, errorMessage } from "./api";
 import type { ProcessInfo, ProcessStatus } from "./types";
-import { errorMessage } from "./errors";
 import type { StatusFilter } from "./status";
 import { useColorMode } from "./useColorMode";
 import { AppHeader } from "./components/AppHeader";

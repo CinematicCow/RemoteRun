@@ -2,7 +2,7 @@ import { Fragment, useState, type RefObject } from "react";
 import { Badge, Table } from "@cloudflare/kumo";
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { formatAgo } from "../api";
-import { statusBadge } from "../status";
+import { STATUS_META } from "../status";
 import type { ProcessInfo } from "../types";
 import { ActionsMenu, type ProcessActions } from "./ProcessActions";
 import { LiveUptime, ProcessDetails } from "./ProcessDetails";
@@ -64,7 +64,7 @@ export function ProcessTable({
                       {p.name}
                     </span>
                   </span>
-                  <Badge variant={statusBadge[p.status]} appearance="dot">
+                      <Badge variant={STATUS_META[p.status].badge} appearance="dot">
                     {p.status}
                   </Badge>
                 </button>
@@ -118,7 +118,7 @@ export function ProcessTable({
                       </div>
                     </Table.Cell>
                     <Table.Cell>
-                      <Badge variant={statusBadge[p.status]} appearance="dot">
+                  <Badge variant={STATUS_META[p.status].badge} appearance="dot">
                         {p.status}
                       </Badge>
                     </Table.Cell>

@@ -220,7 +220,7 @@ mod tests {
         (dir, store, logs, sup)
     }
 
-    fn spec(name: &str, command: &str) -> super::super::state::ProcEntry {
+    fn entry(name: &str, command: &str) -> super::super::state::ProcEntry {
         super::super::state::ProcEntry::new(name.into(), command.into(), "/tmp".into(), now_ts())
     }
 
@@ -234,7 +234,7 @@ mod tests {
     #[tokio::test]
     async fn start_and_stop_long_running_process() {
         let (_dir, store, _logs, sup) = setup();
-        store.insert(spec("api", "sleep 30")).unwrap();
+        store.insert(entry("api", "sleep 30")).unwrap();
         sup.start("api").unwrap();
 
         tokio::time::sleep(Duration::from_millis(300)).await;
@@ -252,7 +252,7 @@ mod tests {
     #[tokio::test]
     async fn crash_records_exit_code_and_restarts() {
         let (_dir, store, _logs, sup) = setup();
-        store.insert(spec("flaky", "exit 3")).unwrap();
+        store.insert(entry("flaky", "exit 3")).unwrap();
         sup.start("flaky").unwrap();
 
         // First run exits immediately; after ~1s backoff it restarts.
@@ -269,7 +269,7 @@ mod tests {
     #[tokio::test]
     async fn double_start_rejected() {
         let (_dir, store, _logs, sup) = setup();
-        store.insert(spec("api", "sleep 30")).unwrap();
+        store.insert(entry("api", "sleep 30")).unwrap();
         sup.start("api").unwrap();
         assert!(sup.start("api").is_err());
         sup.stop("api").await.unwrap();

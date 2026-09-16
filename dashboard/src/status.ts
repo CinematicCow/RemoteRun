@@ -2,33 +2,23 @@ import type { ProcessStatus } from "./types";
 
 export type StatusFilter = "all" | ProcessStatus;
 
-/** Kumo Badge variant per status. */
-export const statusBadge: Record<
-  ProcessStatus,
-  "success" | "neutral" | "error" | "warning"
-> = {
-  running: "success",
-  stopped: "neutral",
-  crashed: "error",
-  backoff: "warning",
+interface StatusMeta {
+  label: string;
+  /** Tailwind dot colour — a static literal so Tailwind emits it. */
+  dot: string;
+  /** Kumo Badge variant. */
+  badge: "success" | "neutral" | "error" | "warning";
+}
+
+/** Single source of truth for how each status is labelled and coloured. */
+export const STATUS_META: Record<ProcessStatus, StatusMeta> = {
+  running: { label: "Running", dot: "bg-kumo-success", badge: "success" },
+  backoff: { label: "Backoff", dot: "bg-kumo-warning", badge: "warning" },
+  crashed: { label: "Crashed", dot: "bg-kumo-danger", badge: "error" },
+  stopped: { label: "Stopped", dot: "bg-kumo-fill", badge: "neutral" },
 };
 
-/* Static class literals so Tailwind generates them. */
-export const statusDot: Record<ProcessStatus, string> = {
-  running: "bg-kumo-success",
-  backoff: "bg-kumo-warning",
-  crashed: "bg-kumo-danger",
-  stopped: "bg-kumo-fill",
-};
-
-export const statusLabel: Record<ProcessStatus, string> = {
-  running: "Running",
-  backoff: "Backoff",
-  crashed: "Crashed",
-  stopped: "Stopped",
-};
-
-/** Order used by the stat cards. */
+/** Display order for the stat cards. */
 export const STATUS_ORDER: ProcessStatus[] = [
   "running",
   "backoff",

@@ -1,5 +1,5 @@
 import { LayerCard, Text } from "@cloudflare/kumo";
-import { STATUS_ORDER, statusDot, statusLabel, type StatusFilter } from "../status";
+import { STATUS_META, STATUS_ORDER, type StatusFilter } from "../status";
 import type { ProcessStatus } from "../types";
 
 /* Static class literals so Tailwind generates them. */
@@ -24,6 +24,7 @@ export function StatCards({
       {STATUS_ORDER.map((status, i) => {
         const count = counts[status];
         const selected = active === status;
+        const meta = STATUS_META[status];
         return (
           <button
             key={status}
@@ -41,10 +42,10 @@ export function StatCards({
               <div className="flex items-center gap-2 sm:grid sm:gap-1">
                 <div className="flex min-w-0 items-center gap-2">
                   <span
-                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDot[status]}`}
+                    className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`}
                   />
                   <Text size="sm" variant="secondary" truncate>
-                    {statusLabel[status]}
+                    {meta.label}
                   </Text>
                 </div>
                 <span
