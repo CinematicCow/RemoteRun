@@ -232,6 +232,12 @@ fn read_log_stream(
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Pane {
+    Processes,
+    Logs,
+}
+
 struct App {
     msg_rx: Receiver<Message>,
     req_tx: Sender<Request>,
@@ -242,8 +248,10 @@ struct App {
     logs: Vec<LogLine>,
     log_follow: bool,
     log_scroll: u16,
+    log_view: u16,
     log_generation: Arc<AtomicU64>,
     modal: Modal,
+    focus: Pane,
     status: String,
     status_at: Instant,
     status_error: bool,
@@ -312,8 +320,10 @@ impl App {
             logs: Vec::new(),
             log_follow: true,
             log_scroll: 0,
+            log_view: 1,
             log_generation: Arc::new(AtomicU64::new(0)),
             modal: Modal::None,
+            focus: Pane::Processes,
             status: String::new(),
             status_at: Instant::now(),
             status_error: false,
@@ -496,41 +506,109 @@ impl App {
             self.on_modal_key(key);
             return;
         }
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+            self.should_quit = true;
+            return;
+        }
+        // Shift+J/K scroll the selected process's logs from either pane.
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
-            KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
-            KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('q') => {
                 self.should_quit = true;
+                return;
             }
-            KeyCode::Down | KeyCode::Char('j') => self.select_next(),
-            KeyCode::Up | KeyCode::Char('k') => self.select_prev(),
-            KeyCode::Char('s') => self.modal = Modal::Start(default_form()),
-            KeyCode::Char('d') => self.confirm_remove(),
-            KeyCode::Char('?') => self.modal = Modal::Help,
+            KeyCode::Char('?') => {
+                self.modal = Modal::Help;
+                return;
+            }
+            KeyCode::Char('s' | 'n') => {
+                self.modal = Modal::Start(default_form());
+                return;
+            }
+            KeyCode::Char('d') => {
+                self.confirm_remove();
+                return;
+            }
             KeyCode::Char('r') => {
                 if let Some(name) = self.selected_name().map(str::to_owned) {
                     self.send(Request::Restart { name }, "restarting…");
                 }
+                return;
             }
             KeyCode::Char('x') => {
                 if let Some(name) = self.selected_name().map(str::to_owned) {
                     self.send(Request::Stop { name }, "stopping…");
                 }
+                return;
             }
-            KeyCode::Char('f') => self.log_follow = !self.log_follow,
-            KeyCode::Char('G') | KeyCode::End => self.log_follow = true,
+            KeyCode::Char('f') => {
+                self.log_follow = !self.log_follow;
+                return;
+            }
+            KeyCode::Char('J') => {
+                self.scroll_logs(1);
+                return;
+            }
+            KeyCode::Char('K') => {
+                self.scroll_logs(-1);
+                return;
+            }
+            KeyCode::Char('j') if shift => {
+                self.scroll_logs(1);
+                return;
+            }
+            KeyCode::Char('k') if shift => {
+                self.scroll_logs(-1);
+                return;
+            }
+            KeyCode::PageDown => {
+                self.scroll_logs_page(1);
+                return;
+            }
+            KeyCode::PageUp => {
+                self.scroll_logs_page(-1);
+                return;
+            }
+            KeyCode::Char('G') | KeyCode::End => {
+                self.log_follow = true;
+                return;
+            }
             KeyCode::Char('g') | KeyCode::Home => {
                 self.log_follow = false;
                 self.log_scroll = 0;
-            }
-            KeyCode::PageUp => {
-                self.log_follow = false;
-                self.log_scroll = self.log_scroll.saturating_sub(10);
-            }
-            KeyCode::PageDown => {
-                self.log_scroll = self.log_scroll.saturating_add(10);
+                return;
             }
             _ => {}
         }
+
+        match self.focus {
+            Pane::Processes => match key.code {
+                KeyCode::Down | KeyCode::Char('j') => self.select_next(),
+                KeyCode::Up | KeyCode::Char('k') => self.select_prev(),
+                KeyCode::Enter | KeyCode::Tab => self.focus = Pane::Logs,
+                KeyCode::Esc => self.should_quit = true,
+                _ => {}
+            },
+            Pane::Logs => match key.code {
+                KeyCode::Down | KeyCode::Char('j') => self.scroll_logs(1),
+                KeyCode::Up | KeyCode::Char('k') => self.scroll_logs(-1),
+                KeyCode::Enter | KeyCode::Esc | KeyCode::Tab | KeyCode::BackTab => {
+                    self.focus = Pane::Processes;
+                }
+                _ => {}
+            },
+        }
+    }
+
+    fn scroll_logs(&mut self, delta: i32) {
+        self.log_follow = false;
+        let next = i64::from(self.log_scroll) + i64::from(delta);
+        self.log_scroll = clamp_u16(usize::try_from(next.max(0)).unwrap_or(0));
+    }
+
+    fn scroll_logs_page(&mut self, direction: i32) {
+        let step = i32::from(self.log_view.max(1));
+        self.scroll_logs(direction * step);
     }
 
     fn on_modal_key(&mut self, key: KeyEvent) {
@@ -632,7 +710,7 @@ impl App {
             .areas(right);
         self.render_details(frame, details);
         self.render_logs(frame, logs);
-        Self::render_footer(frame, footer);
+        self.render_footer(frame, footer);
         self.render_modal(frame, area);
     }
 
@@ -695,17 +773,25 @@ impl App {
         );
     }
 
-    fn render_footer(frame: &mut Frame, area: Rect) {
-        let keys = [
-            ("q", "quit"),
-            ("j/k", "move"),
-            ("s", "start"),
-            ("x", "stop"),
-            ("r", "restart"),
-            ("d", "remove"),
-            ("f", "follow"),
-            ("?", "help"),
-        ];
+    fn render_footer(&self, frame: &mut Frame, area: Rect) {
+        let keys: &[(&str, &str)] = if self.focus == Pane::Logs {
+            &[
+                ("q", "quit"),
+                ("j/k", "scroll"),
+                ("esc", "back"),
+                ("s", "start"),
+                ("?", "help"),
+            ]
+        } else {
+            &[
+                ("q", "quit"),
+                ("j/k", "select"),
+                ("enter", "logs"),
+                ("s", "start"),
+                ("x", "stop"),
+                ("?", "help"),
+            ]
+        };
         let mut spans = vec![Span::raw(" ")];
         for (key, desc) in keys {
             spans.push(Span::styled(
@@ -764,7 +850,7 @@ impl App {
             ],
         )
         .header(header)
-        .block(panel(title))
+        .block(panel_focus(title, self.focus == Pane::Processes))
         .row_highlight_style(Style::new().bg(SELECT_BG).add_modifier(Modifier::BOLD))
         .highlight_symbol(Line::from(Span::styled("▌ ", Style::new().fg(ACCENT))))
         .highlight_spacing(HighlightSpacing::Always);
@@ -815,9 +901,10 @@ impl App {
             ),
         ])
         .alignment(Alignment::Right);
-        let block = panel_padded(title).title_bottom(bottom);
+        let block = panel_padded_focus(title, self.focus == Pane::Logs).title_bottom(bottom);
 
-        let view = usize::from(area.height.saturating_sub(2));
+        self.log_view = area.height.saturating_sub(2);
+        let view = usize::from(self.log_view);
         let max_start = self.logs.len().saturating_sub(view);
         if self.log_follow {
             self.log_scroll = clamp_u16(max_start);
@@ -880,27 +967,30 @@ impl App {
 
     fn render_help(frame: &mut Frame, area: Rect) {
         let rows = [
-            ("j / ↓", "move down"),
-            ("k / ↑", "move up"),
-            ("s", "start a process"),
+            ("j / ↓", "select or scroll down"),
+            ("k / ↑", "select or scroll up"),
+            ("J / K", "scroll logs one line"),
+            ("enter / tab", "focus the logs pane"),
+            ("esc", "leave logs, then quit"),
+            ("pgup/pgdn", "scroll logs a page"),
+            ("g / G", "logs top / follow"),
+            ("f", "toggle log follow"),
+            ("s / n", "start a process"),
             ("x", "stop selected"),
             ("r", "restart selected"),
             ("d", "remove selected"),
-            ("f", "toggle log follow"),
-            ("PgUp/PgDn", "scroll logs"),
-            ("g / G", "logs top / follow"),
-            ("? / Esc", "close help"),
+            ("? ", "close this help"),
             ("q", "quit"),
         ];
         let height = u16::try_from(rows.len()).unwrap_or(u16::MAX) + 2;
-        let rect = centered_rect(area, 46, height);
+        let rect = centered_rect(area, 48, height);
         frame.render_widget(Clear, rect);
         let lines = rows
             .iter()
             .map(|(key, desc)| {
                 Line::from(vec![
                     Span::styled(
-                        format!(" {key:<10}"),
+                        format!(" {key:<11} "),
                         Style::new().fg(ACCENT).add_modifier(Modifier::BOLD),
                     ),
                     Span::styled((*desc).to_owned(), Style::new().fg(MUTED)),
@@ -984,14 +1074,23 @@ impl App {
 }
 
 fn panel(title: impl Into<String>) -> Block<'static> {
+    panel_focus(title, false)
+}
+
+fn panel_focus(title: impl Into<String>, focused: bool) -> Block<'static> {
+    let border = if focused { ACCENT } else { FAINT };
     Block::bordered()
         .border_type(BorderType::Rounded)
-        .border_style(Style::new().fg(FAINT))
+        .border_style(Style::new().fg(border))
         .title(Line::raw(title.into()).style(Style::new().fg(ACCENT).add_modifier(Modifier::BOLD)))
 }
 
 fn panel_padded(title: impl Into<String>) -> Block<'static> {
     panel(title).padding(Padding::horizontal(1))
+}
+
+fn panel_padded_focus(title: impl Into<String>, focused: bool) -> Block<'static> {
+    panel_focus(title, focused).padding(Padding::horizontal(1))
 }
 
 const fn status_color(status: ProcessStatus) -> Color {
@@ -1168,7 +1267,7 @@ mod tests {
 
         app.modal = Modal::Help;
         let out = screen(&mut app);
-        for needle in ["keys", "move down", "toggle log follow", "quit"] {
+        for needle in ["keys", "select or scroll down", "toggle log follow", "quit"] {
             assert!(out.contains(needle), "help missing {needle:?} in:\n{out}");
         }
 
@@ -1186,5 +1285,51 @@ mod tests {
                 "confirm missing {needle:?} in:\n{out}"
             );
         }
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+
+    #[test]
+    fn enter_focuses_logs_and_scrolls() {
+        let mut app = new_app();
+        app.set_processes(vec![sample()]);
+
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.focus, Pane::Logs);
+
+        app.log_follow = true;
+        app.log_scroll = 5;
+        press(&mut app, KeyCode::Char('j'));
+        assert_eq!(app.log_scroll, 6);
+        assert!(!app.log_follow);
+
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(app.focus, Pane::Processes);
+    }
+
+    #[test]
+    fn shift_jk_scrolls_logs_from_processes() {
+        let mut app = new_app();
+        app.set_processes(vec![sample()]);
+        assert_eq!(app.focus, Pane::Processes);
+
+        app.log_scroll = 5;
+        press(&mut app, KeyCode::Char('J'));
+        assert_eq!(app.log_scroll, 6);
+        press(&mut app, KeyCode::Char('K'));
+        assert_eq!(app.log_scroll, 5);
+        assert!(!app.log_follow);
+    }
+
+    #[test]
+    fn s_opens_start_form() {
+        let mut app = new_app();
+        press(&mut app, KeyCode::Char('s'));
+        assert!(matches!(app.modal, Modal::Start(_)));
+        app.modal = Modal::None;
+        press(&mut app, KeyCode::Char('n'));
+        assert!(matches!(app.modal, Modal::Start(_)));
     }
 }
