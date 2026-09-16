@@ -1,8 +1,8 @@
 //! Process registry with JSON persistence.
 //!
-//! Only the specs are persisted; runtime state (pid, status, counters) is
-//! rebuilt from scratch, so every process loads as `Stopped` after a daemon
-//! restart.
+//! Only the spec fields (name, command, cwd, `created_at`) are persisted;
+//! runtime state (pid, status, counters) is rebuilt from scratch, so every
+//! process loads as `Stopped` after a daemon restart.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -13,29 +13,34 @@ use serde::{Deserialize, Serialize};
 use crate::protocol::{ProcessInfo, ProcessStatus};
 use crate::util::now_ts;
 
+/// A managed process: its persisted spec plus its live runtime state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProcSpec {
+pub struct ProcEntry {
     pub name: String,
     pub command: String,
     pub cwd: String,
     pub created_at: i64,
-}
-
-#[derive(Debug)]
-pub struct ProcEntry {
-    pub spec: ProcSpec,
+    #[serde(skip)]
     pub status: ProcessStatus,
+    #[serde(skip)]
     pub pid: Option<u32>,
+    #[serde(skip)]
     pub started_at: Option<i64>,
+    #[serde(skip)]
     pub restarts: u64,
+    #[serde(skip)]
     pub last_exit_code: Option<i32>,
+    #[serde(skip)]
     pub last_crash_at: Option<i64>,
 }
 
 impl ProcEntry {
-    const fn new(spec: ProcSpec) -> Self {
+    pub const fn new(name: String, command: String, cwd: String, created_at: i64) -> Self {
         Self {
-            spec,
+            name,
+            command,
+            cwd,
+            created_at,
             status: ProcessStatus::Stopped,
             pid: None,
             started_at: None,
@@ -46,29 +51,28 @@ impl ProcEntry {
     }
 
     fn info(&self) -> ProcessInfo {
+        let uptime_secs = match (self.status, self.started_at) {
+            (ProcessStatus::Running, Some(at)) => Some(u64::try_from(now_ts() - at).unwrap_or(0)),
+            _ => None,
+        };
         ProcessInfo {
-            name: self.spec.name.clone(),
-            command: self.spec.command.clone(),
-            cwd: self.spec.cwd.clone(),
+            name: self.name.clone(),
+            command: self.command.clone(),
+            cwd: self.cwd.clone(),
             status: self.status,
             pid: self.pid,
-            uptime_secs: match (self.status, self.started_at) {
-                (ProcessStatus::Running, Some(at)) => {
-                    Some(u64::try_from(now_ts() - at).unwrap_or(0))
-                }
-                _ => None,
-            },
+            uptime_secs,
             restarts: self.restarts,
             last_exit_code: self.last_exit_code,
             last_crash_at: self.last_crash_at,
-            created_at: self.spec.created_at,
+            created_at: self.created_at,
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PersistedState {
-    processes: Vec<ProcSpec>,
+    processes: Vec<ProcEntry>,
 }
 
 #[derive(Debug)]
@@ -87,7 +91,7 @@ impl Store {
                 persisted
                     .processes
                     .into_iter()
-                    .map(|spec| (spec.name.clone(), ProcEntry::new(spec)))
+                    .map(|entry| (entry.name.clone(), entry))
                     .collect()
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
@@ -100,11 +104,13 @@ impl Store {
     }
 
     fn save_locked(&self, entries: &HashMap<String, ProcEntry>) -> std::io::Result<()> {
-        let mut specs: Vec<ProcSpec> = entries.values().map(|e| e.spec.clone()).collect();
-        specs.sort_by(|a, b| (a.created_at, &a.name).cmp(&(b.created_at, &b.name)));
-        let state = PersistedState { processes: specs };
+        let mut processes: Vec<ProcEntry> = entries.values().cloned().collect();
+        processes.sort_by(|a, b| (a.created_at, &a.name).cmp(&(b.created_at, &b.name)));
         let tmp = self.path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::to_vec_pretty(&state)?)?;
+        std::fs::write(
+            &tmp,
+            serde_json::to_vec_pretty(&PersistedState { processes })?,
+        )?;
         std::fs::rename(&tmp, &self.path)
     }
 
@@ -114,17 +120,17 @@ impl Store {
         self.entries.lock().expect("state lock poisoned")
     }
 
-    /// Register a new process spec. Fails if the name is taken.
+    /// Register a new process. Fails if the name is taken.
     // The guard is held across `save_locked` on purpose: the on-disk snapshot
     // must be the same map we just mutated, and serializing concurrent
     // insert/remove calls through the lock prevents a lost update on disk.
     #[allow(clippy::significant_drop_tightening)]
-    pub fn insert(&self, spec: ProcSpec) -> Result<(), String> {
+    pub fn insert(&self, entry: ProcEntry) -> Result<(), String> {
         let mut entries = self.lock();
-        if entries.contains_key(&spec.name) {
-            return Err(format!("process '{}' already exists", spec.name));
+        if entries.contains_key(&entry.name) {
+            return Err(format!("process '{}' already exists", entry.name));
         }
-        entries.insert(spec.name.clone(), ProcEntry::new(spec));
+        entries.insert(entry.name.clone(), entry);
         self.save_locked(&entries)
             .map_err(|e| format!("failed to persist state: {e}"))
     }
@@ -178,13 +184,8 @@ impl Store {
 mod tests {
     use super::*;
 
-    fn spec(name: &str) -> ProcSpec {
-        ProcSpec {
-            name: name.into(),
-            command: "sleep 60".into(),
-            cwd: "/tmp".into(),
-            created_at: now_ts(),
-        }
+    fn entry(name: &str) -> ProcEntry {
+        ProcEntry::new(name.into(), "sleep 60".into(), "/tmp".into(), now_ts())
     }
 
     fn temp_store() -> (tempfile::TempDir, Store) {
@@ -196,8 +197,8 @@ mod tests {
     #[test]
     fn insert_and_list() {
         let (_dir, store) = temp_store();
-        store.insert(spec("api")).unwrap();
-        store.insert(spec("web")).unwrap();
+        store.insert(entry("api")).unwrap();
+        store.insert(entry("web")).unwrap();
         let names: Vec<String> = store.list().into_iter().map(|i| i.name).collect();
         assert_eq!(names, vec!["api", "web"]);
     }
@@ -205,14 +206,14 @@ mod tests {
     #[test]
     fn duplicate_name_rejected() {
         let (_dir, store) = temp_store();
-        store.insert(spec("api")).unwrap();
-        assert!(store.insert(spec("api")).is_err());
+        store.insert(entry("api")).unwrap();
+        assert!(store.insert(entry("api")).is_err());
     }
 
     #[test]
     fn remove_running_rejected() {
         let (_dir, store) = temp_store();
-        store.insert(spec("api")).unwrap();
+        store.insert(entry("api")).unwrap();
         store.update("api", |e| e.status = ProcessStatus::Running);
         assert!(store.remove("api").is_err());
         store.update("api", |e| e.status = ProcessStatus::Stopped);
@@ -223,7 +224,7 @@ mod tests {
     #[test]
     fn persistence_roundtrip_loads_as_stopped() {
         let (dir, store) = temp_store();
-        store.insert(spec("api")).unwrap();
+        store.insert(entry("api")).unwrap();
         store.update("api", |e| {
             e.status = ProcessStatus::Running;
             e.pid = Some(1234);

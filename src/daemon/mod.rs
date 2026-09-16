@@ -10,12 +10,8 @@ use tokio::net::{UnixListener, UnixStream};
 use crate::paths;
 
 /// Run the daemon in the foreground. Spawned detached by the CLI.
-pub fn run() -> std::io::Result<()> {
-    let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(async_main())
-}
-
-async fn async_main() -> std::io::Result<()> {
+#[tokio::main]
+pub async fn run() -> std::io::Result<()> {
     std::fs::create_dir_all(paths::data_dir())?;
 
     // Claim the dashboard port first: if it's taken we must die *before*

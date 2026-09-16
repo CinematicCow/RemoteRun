@@ -13,6 +13,7 @@ use crate::protocol::{LogLine, LogStream};
 use crate::util::now_rfc3339;
 
 const BROADCAST_CAPACITY: usize = 1024;
+const STREAMS: [LogStream; 2] = [LogStream::Stdout, LogStream::Stderr];
 
 pub struct LogManager {
     dir: PathBuf,
@@ -92,7 +93,7 @@ impl LogManager {
     /// Last `n` lines for `name`, stdout and stderr merged by timestamp.
     pub fn history(&self, name: &str, n: usize) -> Vec<LogLine> {
         let mut lines = Vec::new();
-        for stream in [LogStream::Stdout, LogStream::Stderr] {
+        for stream in STREAMS {
             let path = self.file_path(name, stream);
             let Ok(content) = std::fs::read_to_string(&path) else {
                 continue;
@@ -115,7 +116,7 @@ impl LogManager {
 
     /// Delete both log files (used by `rr rm`).
     pub fn remove(&self, name: &str) {
-        for stream in [LogStream::Stdout, LogStream::Stderr] {
+        for stream in STREAMS {
             let _ = std::fs::remove_file(self.file_path(name, stream));
         }
     }

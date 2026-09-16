@@ -12,7 +12,6 @@ use crate::protocol::{LogStream, ProcessInfo, Request, Response};
 
 pub fn run(req: &Request) -> Result<(), String> {
     let stream = ensure_daemon()?;
-    let follow_logs = matches!(req, Request::Logs { follow: true, .. });
 
     let mut writer = stream
         .try_clone()
@@ -33,17 +32,8 @@ pub fn run(req: &Request) -> Result<(), String> {
             Response::Error { message } => return Err(message),
             Response::Process { process } => print_process(&process),
             Response::Processes { processes, .. } => print_table(&processes),
-            Response::LogHistory { lines } => {
-                for line in &lines {
-                    print_log_line(line);
-                }
-            }
+            Response::LogHistory { lines } => lines.iter().for_each(print_log_line),
             Response::LogLine { line } => print_log_line(&line),
-            Response::LogHistoryEnd => {
-                if !follow_logs {
-                    break;
-                }
-            }
         }
     }
     Ok(())
@@ -94,9 +84,9 @@ fn daemon_log_tail(n: usize) -> String {
     let Ok(content) = std::fs::read_to_string(&path) else {
         return format!(" check {}", path.display());
     };
-    let lines: Vec<&str> = content.lines().rev().take(n).collect();
+    let tail: Vec<&str> = content.lines().rev().take(n).collect();
     let mut out = String::new();
-    for line in lines.into_iter().rev() {
+    for line in tail.iter().rev() {
         let _ = write!(out, "\n  {line}");
     }
     out

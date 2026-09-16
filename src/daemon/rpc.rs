@@ -59,18 +59,12 @@ async fn handle_conn(core: Arc<Core>, stream: UnixStream) -> std::io::Result<()>
             lines: n,
             follow,
         } => {
-            if !core.store.contains(&name) {
-                let resp = Response::Error {
-                    message: format!("no such process: {name}"),
-                };
-                return write_response(&mut w, &resp).await;
-            }
             // Subscribing after reading history can drop a line emitted in
             // between; acceptable for a tail. Duplicates would be worse.
-            for line in core.logs.history(&name, n) {
-                write_response(&mut w, &Response::LogLine { line }).await?;
+            match core.log_history(&name, n) {
+                Ok(lines) => write_response(&mut w, &Response::LogHistory { lines }).await?,
+                Err(message) => return write_response(&mut w, &Response::Error { message }).await,
             }
-            write_response(&mut w, &Response::LogHistoryEnd).await?;
             if follow {
                 let mut rx = core.logs.subscribe();
                 loop {
