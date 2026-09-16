@@ -48,6 +48,10 @@ export const api = {
   streamUrl: (name: string) => `/api/logs/${encodeURIComponent(name)}/stream`,
 };
 
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export function formatUptime(secs: number): string {
   const d = Math.floor(secs / 86_400);
   const h = Math.floor((secs % 86_400) / 3_600);
