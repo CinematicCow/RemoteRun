@@ -1,0 +1,82 @@
+name: Changelog
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Draft from this tag on (default: latest v* tag)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check changelog structure
+        run: python3 scripts/check-changelog.py CHANGELOG.md
+
+  draft:
+    name: Draft section
+    if: github.event_name == 'workflow_dispatch'
+    needs: [validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Build draft block
+        shell: bash
+        run: |
+          args=()
+          if [ -n "${{ inputs.since }}" ]; then
+            args+=(--since "${{ inputs.since }}")
+          fi
+          ./scripts/draft-changelog-section.sh "${args[@]}" \
+            --write --file CHANGELOG.md | tee draft-section.md
+          range="$(git tag --list 'v*' --sort=-version:refname | head -n 1)"
+          if [ -n "${{ inputs.since }}" ]; then
+            range="${{ inputs.since }}"
+          fi
+          if [ -n "$range" ]; then
+            git log --format='%h %s' "$range..HEAD" > history.txt
+          else
+            git log --format='%h %s' > history.txt
+          fi
+      - name: Upload proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog-draft
+          path: |
+            agents/prompts/write-changelog.md
+            draft-section.md
+            history.txt
+          if-no-files-found: error
+      - name: Open draft pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          branch="changelog/draft"
+          git checkout -B "$branch"
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "changelog already up to date"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" \
+            -c user.email="github-actions[bot]@users.noreply.github.com" \
+            commit --only --message "chore: draft changelog" -- CHANGELOG.md
+          git push --force origin "$branch"
+          if [ -z "$(gh pr list --head "$branch" --state open --json url --jq '.[0].url')" ]; then
+            gh pr create --base master --head "$branch" \
+              --title "chore: draft changelog" \
+              --body "Draft changelog entries for human review. Classify them per agents/prompts/write-changelog.md, then merge."
+          fi
