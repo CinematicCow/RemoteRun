@@ -30,7 +30,6 @@ def main():
     seen_order = []
     has_bullet = False
     versioned = False
-    in_draft = False
 
     def close_subsection():
         if subsection and versioned and not has_bullet:
@@ -65,16 +64,11 @@ def main():
             has_bullet = False
         elif line.startswith("- "):
             if subsection is None:
-                if not (in_draft and section == "unreleased"):
-                    fail(f"bullet outside subsection: {line}")
+                fail(f"bullet outside subsection: {line}")
             else:
                 has_bullet = True
                 if versioned and not REF_RE.search(line):
                     fail(f"bullet lacks (#123) reference: {line}")
-        elif line.startswith("<!-- changelog-draft:start -->"):
-            in_draft = True
-        elif line.startswith("<!-- changelog-draft:end -->"):
-            in_draft = False
 
     close_subsection()
     print("changelog OK")
