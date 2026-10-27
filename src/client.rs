@@ -46,14 +46,16 @@ pub fn ensure_daemon() -> Result<UnixStream, String> {
         return Ok(stream);
     }
 
-    std::fs::create_dir_all(paths::data_dir())
+    paths::ensure_data_dir()
         .map_err(|e| format!("cannot create {}: {e}", paths::data_dir().display()))?;
-    let exe = std::env::current_exe().map_err(|e| format!("cannot locate rr binary: {e}"))?;
+    let log_path = paths::daemon_log_path();
     let log = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(paths::daemon_log_path())
+        .open(&log_path)
         .map_err(|e| format!("cannot open daemon log: {e}"))?;
+    paths::restrict(&log_path, 0o600).map_err(|e| format!("cannot secure daemon log: {e}"))?;
+    let exe = std::env::current_exe().map_err(|e| format!("cannot locate rr binary: {e}"))?;
     let log2 = log.try_clone().map_err(|e| e.to_string())?;
 
     let mut child = std::process::Command::new(exe)

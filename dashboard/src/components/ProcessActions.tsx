@@ -18,11 +18,16 @@ export interface ProcessActions {
 export function ActionsMenu({
   p,
   size = "sm",
+  canControl = true,
   onLogs,
   onRestart,
   onStop,
   onRemove,
-}: ProcessActions & { p: ProcessInfo; size?: "sm" | "base" }) {
+}: ProcessActions & {
+  p: ProcessInfo;
+  size?: "sm" | "base";
+  canControl?: boolean;
+}) {
   const alive = p.status === "running" || p.status === "backoff";
   return (
     <DropdownMenu>
@@ -44,24 +49,31 @@ export function ActionsMenu({
         >
           View logs
         </DropdownMenu.Item>
-        <DropdownMenu.Item
-          icon={ArrowClockwiseIcon}
-          onClick={() => onRestart(p.name)}
-        >
-          Restart
-        </DropdownMenu.Item>
-        {alive ? (
-          <DropdownMenu.Item icon={StopIcon} onClick={() => onStop(p.name)}>
-            Stop
-          </DropdownMenu.Item>
-        ) : (
-          <DropdownMenu.Item
-            variant="danger"
-            icon={TrashIcon}
-            onClick={() => onRemove(p)}
-          >
-            Remove
-          </DropdownMenu.Item>
+        {canControl && (
+          <>
+            <DropdownMenu.Item
+              icon={ArrowClockwiseIcon}
+              onClick={() => onRestart(p.name)}
+            >
+              Restart
+            </DropdownMenu.Item>
+            {alive ? (
+              <DropdownMenu.Item
+                icon={StopIcon}
+                onClick={() => onStop(p.name)}
+              >
+                Stop
+              </DropdownMenu.Item>
+            ) : (
+              <DropdownMenu.Item
+                variant="danger"
+                icon={TrashIcon}
+                onClick={() => onRemove(p)}
+              >
+                Remove
+              </DropdownMenu.Item>
+            )}
+          </>
         )}
       </DropdownMenu.Content>
     </DropdownMenu>

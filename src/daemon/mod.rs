@@ -12,7 +12,7 @@ use crate::paths;
 /// Run the daemon in the foreground. Spawned detached by the CLI.
 #[tokio::main]
 pub async fn run() -> std::io::Result<()> {
-    std::fs::create_dir_all(paths::data_dir())?;
+    paths::ensure_data_dir()?;
 
     // Claim the dashboard port first: if it's taken we must die *before*
     // touching the socket, otherwise we'd tear down a half-started daemon.
@@ -37,6 +37,7 @@ pub async fn run() -> std::io::Result<()> {
     }
     let _ = std::fs::remove_file(&sock);
     let listener = UnixListener::bind(&sock)?;
+    paths::restrict(&sock, 0o600)?;
 
     let core = core::Core::new()?;
     println!("rr: daemon listening on {}", sock.display());

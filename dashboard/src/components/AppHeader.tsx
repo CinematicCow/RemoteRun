@@ -7,7 +7,7 @@ export function AppHeader({
   onToggleTheme,
   daemonError,
   connecting,
-  startEnabled,
+  controlEnabled,
   daemonHost,
   onStart,
 }: {
@@ -15,7 +15,7 @@ export function AppHeader({
   onToggleTheme: () => void;
   daemonError: string | null;
   connecting: boolean;
-  startEnabled: boolean;
+  controlEnabled: boolean;
   daemonHost: string;
   onStart: () => void;
 }) {
@@ -48,8 +48,9 @@ export function AppHeader({
               </Badge>
             )}
           </span>
+          {!controlEnabled && <Badge variant="neutral">Read-only</Badge>}
           <ThemeToggle isDark={isDark} onToggle={onToggleTheme} />
-          {startEnabled && (
+          {controlEnabled && (
             <>
               <span className="hidden h-4 w-px bg-kumo-line sm:block" />
               <span className="hidden sm:block">

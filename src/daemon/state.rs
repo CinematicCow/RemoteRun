@@ -10,6 +10,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 
+use crate::paths;
 use crate::protocol::{ProcessInfo, ProcessStatus};
 use crate::util::now_ts;
 
@@ -86,6 +87,7 @@ impl Store {
     pub fn load(path: PathBuf) -> std::io::Result<Self> {
         let entries = match std::fs::read(&path) {
             Ok(bytes) => {
+                paths::restrict(&path, 0o600)?;
                 let persisted: PersistedState = serde_json::from_slice(&bytes)
                     .map_err(|e| std::io::Error::other(format!("corrupt state file: {e}")))?;
                 persisted
@@ -111,6 +113,7 @@ impl Store {
             &tmp,
             serde_json::to_vec_pretty(&PersistedState { processes })?,
         )?;
+        paths::restrict(&tmp, 0o600)?;
         std::fs::rename(&tmp, &self.path)
     }
 
