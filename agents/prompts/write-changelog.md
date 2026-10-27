@@ -3,9 +3,9 @@
 Edit only the `## [Unreleased]` section in `CHANGELOG.md`.
 Never touch versioned sections. Never edit any other file.
 
-Read the draft block between `<!-- changelog-draft:start -->` and
-`<!-- changelog-draft:end -->`, plus the local Git history for those
-commits. Classify each entry into one fixed section, in this order:
+Read the commits since the last `v*` tag. If no tag exists, read all commits.
+
+Classify each entry into one fixed section, in this order:
 `Added`, `Changed`, `Fixed`, `Removed`, `Security`.
 
 Rules:
@@ -19,9 +19,7 @@ Rules:
 - When in doubt about user impact, keep the entry.
 - Never invent behavior, numbers, or compatibility claims.
 - Every bullet must trace to a commit or pull request.
-- Remove the draft markers once all entries are classified.
 - Delete sections left empty.
 
-When cutting a release, move `Unreleased` entries under a new
-`## [x.y.z] - YYYY-MM-DD` heading and leave a fresh empty `Unreleased`
-section on top.
+Leave the `[Unreleased]` heading in place. Do not add a version heading.
+`scripts/release.sh` moves the section.

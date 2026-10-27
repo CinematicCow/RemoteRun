@@ -40,6 +40,13 @@ without bun, either reuse an existing `dist/` or set
 `RR_SKIP_DASHBOARD_BUILD=1` to embed a placeholder page. CI sets this so the
 Rust gate doesn't require bun.
 
+## Release
+
+Write `[Unreleased]` entries with `agents/prompts/write-changelog.md` first.
+Run `./scripts/release.sh [version]`. It bumps the version, moves the
+changelog, commits, tags, and asks before pushing. An empty version prompt
+takes the next patch version. A pushed `v*` tag runs the release workflow.
+
 ## Conventions
 
 - Rust edition 2024, MSRV 1.85.

@@ -1,12 +1,8 @@
 name: Release
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version, e.g. 0.1.0"
-        required: true
-        type: string
+  push:
+    tags: ["v*"]
 
 permissions:
   contents: read
@@ -33,18 +29,13 @@ jobs:
       - name: Check version matches Cargo.toml
         shell: bash
         run: |
-          version="${{ inputs.version }}"
+          version="${GITHUB_REF_NAME#v}"
           if ! grep -q "^version = \"$version\"$" Cargo.toml; then
-            echo "input $version does not match Cargo.toml" >&2
+            echo "tag $GITHUB_REF_NAME does not match Cargo.toml" >&2
             exit 1
           fi
-      - name: Check tag does not exist
-        shell: bash
-        run: |
-          if git ls-remote --tags origin "refs/tags/v${{ inputs.version }}" | grep -q .; then
-            echo "tag v${{ inputs.version }} already exists" >&2
-            exit 1
-          fi
+      - name: Changelog
+        run: python3 scripts/check-changelog.py CHANGELOG.md
       - name: Formatting
         run: cargo fmt-check
       - name: Clippy
@@ -66,11 +57,12 @@ jobs:
       - name: Check binary version
         shell: bash
         run: |
-          ./target/release/rr --version | grep -q "${{ inputs.version }}"
+          version="${GITHUB_REF_NAME#v}"
+          ./target/release/rr --version | grep -q "$version"
       - name: Stage package
         shell: bash
         run: |
-          version="${{ inputs.version }}"
+          version="${GITHUB_REF_NAME#v}"
           staging="rr-$version-x86_64-unknown-linux-gnu"
           mkdir -p "$staging"
           cp target/release/rr "$staging/"
@@ -107,7 +99,7 @@ jobs:
       - name: Build release notes
         shell: bash
         run: |
-          version="${{ inputs.version }}"
+          version="${GITHUB_REF_NAME#v}"
           if [ -f CHANGELOG.md ]; then
             awk -v ver="$version" '
               $0 ~ "^## \\[" ver "\\]" { found=1; print; next }
@@ -126,11 +118,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          version="${{ inputs.version }}"
+          version="${GITHUB_REF_NAME#v}"
           gh release create "v$version" \
             --draft \
             --title "v$version" \
             --notes-file notes.md \
-            --target "$GITHUB_SHA" \
             rr-"$version"-x86_64-unknown-linux-gnu.tar.gz \
             rr-"$version"-x86_64-unknown-linux-gnu.tar.gz.sha256
