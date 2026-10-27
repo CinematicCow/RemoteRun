@@ -4,8 +4,9 @@
 use std::sync::Arc;
 
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Request as AxumRequest, State};
 use axum::http::{StatusCode, Uri, header};
+use axum::middleware::Next;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response as HttpResponse};
 use axum::routing::{get, post};
@@ -27,6 +28,90 @@ pub fn port() -> u16 {
         .unwrap_or(DEFAULT_PORT)
 }
 
+/// Host names the dashboard answers to. Local names are always accepted;
+/// `RR_ALLOWED_HOSTS` adds the public name of a reverse proxy (Tailscale
+/// Serve, Cloudflare Tunnel, ...), comma separated.
+#[derive(Clone)]
+struct AllowedHosts {
+    names: Vec<String>,
+}
+
+impl AllowedHosts {
+    fn from_env() -> Self {
+        let names = ["127.0.0.1", "localhost", "::1"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain(
+                std::env::var("RR_ALLOWED_HOSTS")
+                    .unwrap_or_default()
+                    .split(',')
+                    .map(|name| name.trim().to_ascii_lowercase())
+                    .filter(|name| !name.is_empty()),
+            )
+            .collect();
+        Self { names }
+    }
+
+    fn accepts(&self, host: &str) -> bool {
+        let name = host_name(host);
+        self.names
+            .iter()
+            .any(|allowed| allowed.eq_ignore_ascii_case(name))
+    }
+}
+
+/// Host part of a `Host` or `Origin` authority, without port or IPv6 brackets.
+fn host_name(value: &str) -> &str {
+    let value = value.trim();
+    if let Some(rest) = value.strip_prefix('[') {
+        return rest.split_once(']').map_or(rest, |(name, _)| name);
+    }
+    value.rsplit_once(':').map_or(value, |(name, port)| {
+        if port.chars().all(|c| c.is_ascii_digit()) {
+            name
+        } else {
+            value
+        }
+    })
+}
+
+fn origin_host(origin: &str) -> &str {
+    let authority = origin.split_once("://").map_or(origin, |(_, rest)| rest);
+    authority.split('/').next().unwrap_or(authority)
+}
+
+fn request_allowed(hosts: &AllowedHosts, host: Option<&str>, origin: Option<&str>) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    hosts.accepts(host) && origin.is_none_or(|origin| hosts.accepts(origin_host(origin)))
+}
+
+/// Reject requests that do not carry a local `Host` and `Origin`. A page
+/// cannot set either header, so this stops DNS rebinding and cross-origin use.
+async fn local_only(
+    State(hosts): State<AllowedHosts>,
+    req: AxumRequest,
+    next: Next,
+) -> HttpResponse {
+    let host = req
+        .headers()
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok());
+    let origin = req
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok());
+    if !request_allowed(&hosts, host, origin) {
+        return (
+            StatusCode::FORBIDDEN,
+            "dashboard accepts local requests only; set RR_ALLOWED_HOSTS for a reverse proxy",
+        )
+            .into_response();
+    }
+    next.run(req).await
+}
+
 #[derive(RustEmbed)]
 #[folder = "dashboard/dist"]
 struct Assets;
@@ -44,7 +129,11 @@ pub async fn serve(core: Arc<Core>, listener: tokio::net::TcpListener) -> std::i
         .route("/api/rpc", post(rpc))
         .route("/api/logs/{name}/stream", get(logs_stream))
         .fallback(static_asset)
-        .with_state(core);
+        .with_state(core)
+        .layer(axum::middleware::from_fn_with_state(
+            AllowedHosts::from_env(),
+            local_only,
+        ));
 
     println!("rr: dashboard on http://{}", listener.local_addr()?);
     axum::serve(listener, app).await
@@ -207,5 +296,57 @@ mod tests {
             .unwrap();
         let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(value["kind"], "error");
+    }
+
+    fn local_hosts() -> AllowedHosts {
+        AllowedHosts {
+            names: ["127.0.0.1", "localhost", "::1"]
+                .map(str::to_owned)
+                .to_vec(),
+        }
+    }
+
+    #[test]
+    fn host_name_strips_port_and_brackets() {
+        assert_eq!(host_name("127.0.0.1:7070"), "127.0.0.1");
+        assert_eq!(host_name("[::1]:7070"), "::1");
+        assert_eq!(host_name("localhost"), "localhost");
+    }
+
+    #[test]
+    fn local_requests_pass() {
+        let hosts = local_hosts();
+        assert!(request_allowed(&hosts, Some("localhost:7070"), None));
+        assert!(request_allowed(
+            &hosts,
+            Some("127.0.0.1:7070"),
+            Some("http://127.0.0.1:7070")
+        ));
+        assert!(request_allowed(
+            &hosts,
+            Some("localhost:7070"),
+            Some("http://localhost:5173")
+        ));
+    }
+
+    #[test]
+    fn foreign_requests_fail() {
+        let hosts = local_hosts();
+        assert!(!request_allowed(
+            &hosts,
+            Some("attacker.example:7070"),
+            None
+        ));
+        assert!(!request_allowed(
+            &hosts,
+            Some("127.0.0.1:7070"),
+            Some("http://attacker.example")
+        ));
+        assert!(!request_allowed(&hosts, None, None));
+        assert!(!request_allowed(
+            &hosts,
+            Some("127.0.0.1:7070"),
+            Some("null")
+        ));
     }
 }
