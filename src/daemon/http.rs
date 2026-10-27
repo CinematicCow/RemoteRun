@@ -28,9 +28,6 @@ pub fn port() -> u16 {
         .unwrap_or(DEFAULT_PORT)
 }
 
-/// Host names the dashboard answers to. Local names are always accepted;
-/// `RR_ALLOWED_HOSTS` adds the public name of a reverse proxy (Tailscale
-/// Serve, Cloudflare Tunnel, ...), comma separated.
 #[derive(Clone)]
 struct AllowedHosts {
     names: Vec<String>,
@@ -60,7 +57,6 @@ impl AllowedHosts {
     }
 }
 
-/// Host part of a `Host` or `Origin` authority, without port or IPv6 brackets.
 fn host_name(value: &str) -> &str {
     let value = value.trim();
     if let Some(rest) = value.strip_prefix('[') {
@@ -87,8 +83,6 @@ fn request_allowed(hosts: &AllowedHosts, host: Option<&str>, origin: Option<&str
     hosts.accepts(host) && origin.is_none_or(|origin| hosts.accepts(origin_host(origin)))
 }
 
-/// Reject requests that do not carry a local `Host` and `Origin`. A page
-/// cannot set either header, so this stops DNS rebinding and cross-origin use.
 async fn local_only(
     State(hosts): State<AllowedHosts>,
     req: AxumRequest,
