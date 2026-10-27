@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWriteExt, BufReader};
 use tokio::sync::broadcast;
 
+use crate::paths;
 use crate::protocol::{LogLine, LogStream};
 use crate::util::now_rfc3339;
 
@@ -23,6 +24,7 @@ pub struct LogManager {
 impl LogManager {
     pub fn new(dir: PathBuf) -> std::io::Result<Self> {
         std::fs::create_dir_all(&dir)?;
+        paths::restrict(&dir, 0o700)?;
         let (tx, _) = broadcast::channel(BROADCAST_CAPACITY);
         Ok(Self { dir, tx })
     }
@@ -60,6 +62,9 @@ impl LogManager {
                     return;
                 }
             };
+            if let Err(e) = paths::restrict(&path, 0o600) {
+                eprintln!("rr: cannot secure log file {}: {e}", path.display());
+            }
             let mut lines = BufReader::new(reader).lines();
             loop {
                 let line = match lines.next_line().await {
