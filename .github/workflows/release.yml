@@ -72,13 +72,9 @@ jobs:
           fi
           tar czf "$staging.tar.gz" "$staging"
           sha256sum "$staging.tar.gz" > "$staging.tar.gz.sha256"
-          bin="rr-$version-x86_64-unknown-linux-gnu.bin"
-          cp target/release/rr "$bin"
-          sha256sum "$bin" > "$bin.sha256"
+          cp target/release/rr rr
           echo "ARCHIVE=$staging.tar.gz" >> "$GITHUB_ENV"
           echo "SUM=$staging.tar.gz.sha256" >> "$GITHUB_ENV"
-          echo "BIN=$bin" >> "$GITHUB_ENV"
-          echo "BIN_SUM=$bin.sha256" >> "$GITHUB_ENV"
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -86,8 +82,7 @@ jobs:
           path: |
             ${{ env.ARCHIVE }}
             ${{ env.SUM }}
-            ${{ env.BIN }}
-            ${{ env.BIN_SUM }}
+            rr
           if-no-files-found: error
 
   draft:
@@ -126,12 +121,10 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
-          bin="rr-$version-x86_64-unknown-linux-gnu.bin"
           gh release create "v$version" \
             --draft \
             --title "v$version" \
             --notes-file notes.md \
             rr-"$version"-x86_64-unknown-linux-gnu.tar.gz \
             rr-"$version"-x86_64-unknown-linux-gnu.tar.gz.sha256 \
-            "$bin" \
-            "$bin.sha256"
+            rr
