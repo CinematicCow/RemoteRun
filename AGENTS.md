@@ -23,10 +23,13 @@ when an allow is warranted, attach it to the narrowest item and say why.
 
 ## Scope discipline
 
+- For a major feature, research the common approaches and best practices
+  first. Pick the simplest one that works. Do not build for problems no user
+  will hit.
 - Before adding complexity for a speculative or vanishingly unlikely race or
-  security edge case, explain the concrete failure mode, its likelihood, and
-  the complexity cost to the user. Get their agreement first. Do not expand
-  scope for theoretical robustness on your own.
+  security edge case, explain the concrete failure mode, likelihood, and
+  complexity cost to the user and get their buy-in. Do not silently expand
+  scope for theoretical robustness.
 - Do not preserve backward compatibility. Remove obsolete paths. Do not add
   compatibility layers, fallbacks, or mitigations.
 
@@ -41,6 +44,11 @@ Rust gate doesn't require bun.
 
 - Rust edition 2024, MSRV 1.85.
 - Do not add comments unless they explain non-obvious intent.
+
+## Design
+
+Remove redundant slogans, explanatory text, and minor labels. If the interface becomes incomprehensible after removal, it means the layout itself has issues—redesign it from scratch.  
+Every modification must consider user experience, developer experience, and AI Agent usage experience. All three must improve, without breaking existing functionality.
 
 ## VCS
 
