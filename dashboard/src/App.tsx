@@ -35,7 +35,7 @@ export default function App() {
   /* A ref, not state: only the per-second uptime leaves read it, and they
      re-render on their own clock — polls shouldn't re-render the app. */
   const fetchedAtRef = useRef(0);
-  const [startEnabled, setStartEnabled] = useState(false);
+  const [controlEnabled, setControlEnabled] = useState(false);
   const [daemonError, setDaemonError] = useState<string | null>(null);
   const daemonDown = useRef(false);
   const failures = useRef(0);
@@ -54,8 +54,8 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const { processes, startEnabled } = await api.ps();
-      setStartEnabled(startEnabled);
+      const { processes, controlEnabled } = await api.ps();
+      setControlEnabled(controlEnabled);
       fetchedAtRef.current = Date.now();
       /* Identical snapshot (e.g. everything stopped) → keep the previous
          array so nothing below re-renders. */
@@ -166,7 +166,7 @@ export default function App() {
         onToggleTheme={toggle}
         daemonError={daemonError}
         connecting={processes === null}
-        startEnabled={startEnabled}
+        controlEnabled={controlEnabled}
         daemonHost={window.location.host}
         onStart={() => setStartOpen(true)}
       />
@@ -232,13 +232,13 @@ export default function App() {
               icon={<TerminalWindowIcon size={28} />}
               title="No processes yet"
               description={
-                startEnabled
+                controlEnabled
                   ? "Start one here, or from a terminal:"
                   : "Start one from a terminal:"
               }
               commandLine='rr -n api "bun start"'
               contents={
-                startEnabled && (
+                controlEnabled && (
                   <Button
                     variant="primary"
                     icon={<PlusIcon size={16} />}
@@ -274,6 +274,7 @@ export default function App() {
           <ProcessTable
             processes={filtered}
             fetchedAtRef={fetchedAtRef}
+            canControl={controlEnabled}
             onLogs={setSelectedLogs}
             onRestart={(name) =>
               act(() => api.restart(name), `Couldn't restart ${name}`)

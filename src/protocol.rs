@@ -37,8 +37,9 @@ pub enum Response {
     },
     Processes {
         processes: Vec<ProcessInfo>,
-        /// Whether the HTTP dashboard may start processes (`RR_DASHBOARD_START`).
-        start_enabled: bool,
+        /// Whether the HTTP dashboard may start, stop, restart, or remove
+        /// processes (`RR_DASHBOARD_CONTROL`).
+        control_enabled: bool,
     },
     Process {
         process: ProcessInfo,

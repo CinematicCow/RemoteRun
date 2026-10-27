@@ -11,6 +11,8 @@ interface Props extends ProcessActions {
   processes: ProcessInfo[];
   /** When the current process snapshot was fetched (for live uptime ticks). */
   fetchedAtRef: RefObject<number>;
+  /** Whether the viewer may start, stop, restart, or remove processes. */
+  canControl: boolean;
 }
 
 function Caret({ open }: { open: boolean }) {
@@ -29,6 +31,7 @@ function Caret({ open }: { open: boolean }) {
 export function ProcessTable({
   processes,
   fetchedAtRef,
+  canControl,
   onLogs,
   onRestart,
   onStop,
@@ -69,7 +72,7 @@ export function ProcessTable({
                   </Badge>
                 </button>
                 <div className="flex items-center px-1.5">
-                  <ActionsMenu p={p} size="base" {...actions} />
+                  <ActionsMenu p={p} size="base" canControl={canControl} {...actions} />
                 </div>
               </div>
               {open && (
@@ -156,7 +159,7 @@ export function ProcessTable({
                         className="flex justify-end"
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <ActionsMenu p={p} {...actions} />
+                        <ActionsMenu p={p} canControl={canControl} {...actions} />
                       </div>
                     </Table.Cell>
                   </Table.Row>

@@ -18,7 +18,7 @@ use super::core::Core;
 use crate::protocol::{Request, Response};
 
 pub const DEFAULT_PORT: u16 = 7070;
-const DEFAULT_HOST: std::net::Ipv4Addr = std::net::Ipv4Addr::LOCALHOST;
+const BIND: std::net::Ipv4Addr = std::net::Ipv4Addr::LOCALHOST;
 
 pub fn port() -> u16 {
     std::env::var("RR_PORT")
@@ -27,25 +27,15 @@ pub fn port() -> u16 {
         .unwrap_or(DEFAULT_PORT)
 }
 
-/// Bind address for the dashboard. Defaults to loopback-only, since the
-/// dashboard has no auth — set `RR_HOST` (e.g. to a LAN IP) to expose it
-/// beyond this machine, understanding that anyone who can reach that address
-/// gets unauthenticated control over every managed process.
-fn host() -> std::net::Ipv4Addr {
-    std::env::var("RR_HOST")
-        .ok()
-        .and_then(|h| h.parse().ok())
-        .unwrap_or(DEFAULT_HOST)
-}
-
 #[derive(RustEmbed)]
 #[folder = "dashboard/dist"]
 struct Assets;
 
-/// Bind the dashboard port. Done before anything else at daemon startup so a
-/// port conflict fails loudly instead of killing an already-serving daemon.
+/// Bind the dashboard port on loopback. The dashboard has no authentication,
+/// so it must never listen on a public or LAN address. Remote access belongs
+/// to the network layer (Tailscale, SSH, Cloudflare Access).
 pub async fn bind() -> std::io::Result<tokio::net::TcpListener> {
-    let addr = std::net::SocketAddr::from((host(), port()));
+    let addr = std::net::SocketAddr::from((BIND, port()));
     tokio::net::TcpListener::bind(addr).await
 }
 
@@ -60,15 +50,28 @@ pub async fn serve(core: Arc<Core>, listener: tokio::net::TcpListener) -> std::i
     axum::serve(listener, app).await
 }
 
+/// Requests that change process state. The HTTP dashboard may only send these
+/// when `RR_DASHBOARD_CONTROL` is set; the value is built into `Core` at
+/// startup.
+const fn requires_control(req: &Request) -> bool {
+    matches!(
+        req,
+        Request::Start { .. }
+            | Request::Stop { .. }
+            | Request::Restart { .. }
+            | Request::Remove { .. }
+    )
+}
+
 /// Single entry point mirroring the unix socket protocol: the body is a
 /// `Request`, the reply a `Response`. Transport-level failures use a non-2xx
 /// status with an `error` field; RPC-level errors ride inside the `Response`.
 async fn rpc(State(core): State<Arc<Core>>, Json(req): Json<Request>) -> HttpResponse {
-    if matches!(&req, Request::Start { .. }) && !core.dashboard_start {
+    if requires_control(&req) && !core.dashboard_control {
         return (
             StatusCode::FORBIDDEN,
             Json(json!({
-                "error": "starting processes from the dashboard is disabled (set RR_DASHBOARD_START=1)"
+                "error": "dashboard control is disabled (set RR_DASHBOARD_CONTROL=1)"
             })),
         )
             .into_response();
@@ -123,5 +126,86 @@ async fn static_asset(uri: Uri) -> HttpResponse {
             ([(header::CONTENT_TYPE, mime.as_ref().to_string())], body).into_response()
         }
         None => (StatusCode::NOT_FOUND, "dashboard not built").into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::daemon::core::Core;
+    use crate::daemon::logs::LogManager;
+    use crate::daemon::state::Store;
+    use crate::daemon::supervisor::Supervisor;
+    use axum::extract::State;
+    use std::sync::Arc;
+
+    fn test_core(control: bool) -> (tempfile::TempDir, Arc<Core>) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::load(dir.path().join("state.json")).unwrap());
+        let logs = Arc::new(LogManager::new(dir.path().join("logs")).unwrap());
+        let supervisor = Supervisor::new(store.clone(), logs.clone());
+        (
+            dir,
+            Arc::new(Core {
+                store,
+                logs,
+                supervisor,
+                dashboard_control: control,
+            }),
+        )
+    }
+
+    fn mutations() -> [Request; 4] {
+        [
+            Request::Start {
+                name: "x".into(),
+                command: "true".into(),
+                cwd: "/".into(),
+            },
+            Request::Stop { name: "x".into() },
+            Request::Restart { name: "x".into() },
+            Request::Remove { name: "x".into() },
+        ]
+    }
+
+    #[test]
+    fn control_predicate_covers_every_mutation() {
+        for req in mutations() {
+            assert!(requires_control(&req));
+        }
+        assert!(!requires_control(&Request::Ps));
+        assert!(!requires_control(&Request::Logs {
+            name: "x".into(),
+            lines: 1,
+            follow: false,
+        }));
+    }
+
+    #[tokio::test]
+    async fn read_only_blocks_every_mutation() {
+        let (_dir, core) = test_core(false);
+        for req in mutations() {
+            let response = rpc(State(core.clone()), Json(req)).await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        }
+    }
+
+    #[tokio::test]
+    async fn read_only_allows_reads() {
+        let (_dir, core) = test_core(false);
+        let response = rpc(State(core), Json(Request::Ps)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn control_passes_mutations_through() {
+        let (_dir, core) = test_core(true);
+        let response = rpc(State(core), Json(Request::Stop { name: "x".into() })).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["kind"], "error");
     }
 }

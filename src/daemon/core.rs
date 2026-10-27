@@ -16,15 +16,15 @@ pub struct Core {
     pub store: Arc<Store>,
     pub logs: Arc<LogManager>,
     pub supervisor: Supervisor,
-    /// Whether the HTTP dashboard is allowed to start processes. Off unless
-    /// `RR_DASHBOARD_START` is set; the CLI always may.
-    pub dashboard_start: bool,
+    /// Whether the HTTP dashboard is allowed to start, stop, restart, or
+    /// remove processes. Off unless `RR_DASHBOARD_CONTROL` is set; the CLI
+    /// always may.
+    pub dashboard_control: bool,
 }
 
-fn dashboard_start_enabled() -> bool {
-    std::env::var("RR_DASHBOARD_START")
-        .ok()
-        .is_some_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"))
+fn dashboard_control_enabled() -> bool {
+    std::env::var("RR_DASHBOARD_CONTROL")
+        .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"))
 }
 
 pub fn valid_name(name: &str) -> bool {
@@ -50,7 +50,7 @@ impl Core {
             store,
             logs,
             supervisor,
-            dashboard_start: dashboard_start_enabled(),
+            dashboard_control: dashboard_control_enabled(),
         }))
     }
 
@@ -61,7 +61,7 @@ impl Core {
             Request::Start { name, command, cwd } => self.start(name, command, cwd).await,
             Request::Ps => Response::Processes {
                 processes: self.store.list(),
-                start_enabled: self.dashboard_start,
+                control_enabled: self.dashboard_control,
             },
             Request::Stop { name } => match self.supervisor.stop(&name).await {
                 Ok(()) => self.process_response(&name),

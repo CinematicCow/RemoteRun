@@ -3,7 +3,7 @@ import type { LogLine, ProcessInfo } from "./types";
 type RpcResponse =
   | { kind: "ok" }
   | { kind: "error"; message: string }
-  | { kind: "processes"; processes: ProcessInfo[]; start_enabled: boolean }
+  | { kind: "processes"; processes: ProcessInfo[]; control_enabled: boolean }
   | { kind: "process"; process: ProcessInfo }
   | { kind: "log_history"; lines: LogLine[] };
 
@@ -27,7 +27,7 @@ export const api = {
   ps: async () => {
     const res = await rpc({ cmd: "ps" });
     if (res.kind !== "processes") throw new Error("unexpected response");
-    return { processes: res.processes, startEnabled: res.start_enabled };
+    return { processes: res.processes, controlEnabled: res.control_enabled };
   },
 
   start: (name: string, command: string) =>
