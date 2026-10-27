@@ -21,6 +21,15 @@ Lint policy is in `Cargo.toml` under `[lints.rust]`, `[lints.rustdoc]`, and
 and `nursery` are warnings. Prefer removing the cause over adding `#[allow]`;
 when an allow is warranted, attach it to the narrowest item and say why.
 
+## Scope discipline
+
+- Before adding complexity for a speculative or vanishingly unlikely race or
+  security edge case, explain the concrete failure mode, its likelihood, and
+  the complexity cost to the user. Get their agreement first. Do not expand
+  scope for theoretical robustness on your own.
+- Do not preserve backward compatibility. Remove obsolete paths. Do not add
+  compatibility layers, fallbacks, or mitigations.
+
 ## Building
 
 `build.rs` builds `dashboard/` into `dashboard/dist` with bun. On a machine
