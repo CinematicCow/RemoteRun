@@ -72,6 +72,7 @@ jobs:
           fi
           tar czf "$staging.tar.gz" "$staging"
           sha256sum "$staging.tar.gz" > "$staging.tar.gz.sha256"
+          cp target/release/rr rr
           echo "ARCHIVE=$staging.tar.gz" >> "$GITHUB_ENV"
           echo "SUM=$staging.tar.gz.sha256" >> "$GITHUB_ENV"
       - name: Upload artifact
@@ -81,6 +82,7 @@ jobs:
           path: |
             ${{ env.ARCHIVE }}
             ${{ env.SUM }}
+            rr
           if-no-files-found: error
 
   draft:
@@ -124,4 +126,5 @@ jobs:
             --title "v$version" \
             --notes-file notes.md \
             rr-"$version"-x86_64-unknown-linux-gnu.tar.gz \
-            rr-"$version"-x86_64-unknown-linux-gnu.tar.gz.sha256
+            rr-"$version"-x86_64-unknown-linux-gnu.tar.gz.sha256 \
+            rr
